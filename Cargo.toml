@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 bevy = "0.16.1"
+fastrand = "2.3.0"
 wgpu = "24.0.5"

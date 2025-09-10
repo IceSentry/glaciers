@@ -1,8 +1,10 @@
 use bevy::{
     asset::RenderAssetUsages,
+    color::palettes::css::{BLUE, GREEN, RED, WHITE},
     core_pipeline::core_3d::graph::{Core3d, Node3d},
     ecs::query::QueryItem,
     image::TextureFormatPixelInfo,
+    math::bounding::Aabb2d,
     prelude::*,
     render::{
         RenderApp,
@@ -22,7 +24,16 @@ use wgpu::util::TextureBlitter;
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, GlaciersPlugin))
+        .add_plugins((
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    present_mode: bevy::window::PresentMode::AutoNoVsync,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            GlaciersPlugin,
+        ))
         .add_systems(Startup, setup)
         .add_systems(Update, update)
         .run();
@@ -31,7 +42,7 @@ fn main() {
 struct GlaciersPlugin;
 impl Plugin for GlaciersPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ExtractComponentPlugin::<RasterizerImage>::default());
+        app.add_plugins(ExtractComponentPlugin::<GlaciersContext>::default());
     }
 
     fn finish(&self, app: &mut App) {
@@ -55,8 +66,9 @@ impl Plugin for GlaciersPlugin {
 }
 
 #[derive(Component, Default, Clone, ExtractComponent)]
-struct RasterizerImage {
+struct GlaciersContext {
     image: Handle<Image>,
+    scale: f32,
 }
 
 fn setup(
@@ -65,10 +77,11 @@ fn setup(
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
     let res = &window.single().unwrap().resolution;
+    let scale = 0.1;
     let image = Image::new_fill(
         Extent3d {
-            width: res.width() as u32,
-            height: res.height() as u32,
+            width: (res.width() * scale) as u32,
+            height: (res.height() * scale) as u32,
             depth_or_array_layers: 1,
         },
         TextureDimension::D2,
@@ -76,41 +89,95 @@ fn setup(
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::all(),
     );
+    println!("Image size: {}", image.size());
+
+    let point_a = UVec2::new(
+        fastrand::u32(0..image.size().x),
+        fastrand::u32(0..image.size().y),
+    );
+
+    let point_b = UVec2::new(
+        fastrand::u32(0..image.size().x),
+        fastrand::u32(0..image.size().y),
+    );
+
+    let point_c = UVec2::new(
+        fastrand::u32(0..image.size().x),
+        fastrand::u32(0..image.size().y),
+    );
+
+    commands.spawn(Triangle {
+        points: [point_a, point_b, point_c],
+    });
+
     // camera
     commands.spawn((
         Camera3d::default(),
         Transform::default(),
         Camera {
-            clear_color: ClearColorConfig::Custom(bevy::color::palettes::css::MAGENTA.into()),
+            clear_color: ClearColorConfig::Custom(Color::BLACK),
             ..default()
         },
-        RasterizerImage {
+        GlaciersContext {
             image: images.add(image),
+            scale,
             ..default()
         },
     ));
 }
 
+#[derive(Component)]
+struct Triangle {
+    points: [UVec2; 3],
+}
+
 fn update(
-    mut rasterizer_image: Query<&RasterizerImage>,
+    mut commands: Commands,
+    mut glaciers_context: Query<&GlaciersContext>,
     mut images: ResMut<Assets<Image>>,
     mut resize_events: EventReader<WindowResized>,
+    triangles: Query<(Entity, &Triangle)>,
+    keyboard: Res<ButtonInput<KeyCode>>,
 ) -> Result<()> {
-    let Some(image) = rasterizer_image
-        .single_mut()
-        .ok()
-        .and_then(|handle| images.get_mut(handle.image.id()))
-    else {
+    let Ok(glaciers_context) = glaciers_context.single_mut() else {
         return Ok(());
     };
+    let Some(image) = images.get_mut(glaciers_context.image.id()) else {
+        return Ok(());
+    };
+
+    if keyboard.just_pressed(KeyCode::KeyR) {
+        for (e, _) in triangles {
+            commands.entity(e).despawn();
+        }
+        let point_a = UVec2::new(
+            fastrand::u32(0..image.size().x),
+            fastrand::u32(0..image.size().y),
+        );
+
+        let point_b = UVec2::new(
+            fastrand::u32(0..image.size().x),
+            fastrand::u32(0..image.size().y),
+        );
+
+        let point_c = UVec2::new(
+            fastrand::u32(0..image.size().x),
+            fastrand::u32(0..image.size().y),
+        );
+
+        commands.spawn(Triangle {
+            points: [point_a, point_b, point_c],
+        });
+    }
 
     // Resize when needed
     for ev in resize_events.read() {
         image.resize(Extent3d {
-            width: ev.width as u32,
-            height: ev.height as u32,
+            width: (ev.width * glaciers_context.scale) as u32,
+            height: (ev.height * glaciers_context.scale) as u32,
             depth_or_array_layers: 1,
         });
+        println!("Image size: {}", image.size());
     }
 
     // Clear the image
@@ -120,17 +187,72 @@ fn update(
         }
     }
 
+    // TODO use a separate buffer for the image?
+
     let half_width = image.size().x / 2;
     let half_height = image.size().y / 2;
+    let center = UVec2::new(half_width, half_height);
 
-    let half_size = 32;
-    for x in half_width - half_size..=half_width + half_size {
-        for y in half_height - half_size..=half_height + half_size {
-            image.set_color_at(x, y, Color::srgba(1.0, 0.0, 0.0, 1.0))?;
-        }
+    for (_, triangle) in triangles {
+        // let aabb = Aabb2d::from_point_cloud(Vec2::ZERO, &triangle.points.map(|p| p.as_vec2()));
+        //
+        // let (min, max) = triangle.points.iter().fold(
+        //     (triangle.points[0], triangle.points[0]),
+        //     |(prev_min, prev_max), point| (point.min(prev_min), point.max(prev_max)),
+        // );
+
+        draw_line(image, triangle.points[0], triangle.points[1], WHITE.into());
+        draw_line(image, triangle.points[1], triangle.points[2], WHITE.into());
+        draw_line(image, triangle.points[2], triangle.points[0], WHITE.into());
+
+        draw_point(image, triangle.points[0], RED.into());
+        draw_point(image, triangle.points[1], GREEN.into());
+        draw_point(image, triangle.points[2], BLUE.into());
     }
 
     Ok(())
+}
+
+fn draw_line(image: &mut Image, start: UVec2, end: UVec2, color: Color) {
+    let mut x0 = start.x as i32;
+    let mut y0 = start.y as i32;
+    let x1 = end.x as i32;
+    let y1 = end.y as i32;
+
+    let dx = (x1 - x0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let dy = -(y1 - y0).abs();
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let mut err = dx + dy;
+
+    loop {
+        draw_point(image, UVec2::new(x0 as u32, y0 as u32), color);
+
+        if x0 == x1 && y0 == y1 {
+            break;
+        }
+        let e2 = 2 * err;
+        if e2 >= dy {
+            err += dy;
+            x0 += sx;
+        }
+        if e2 <= dx {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+fn draw_point(image: &mut Image, pos: UVec2, color: Color) {
+    // let half_width = image.size().x / 2;
+    // let half_height = image.size().y / 2;
+    //
+    // let half_size = 32;
+    // for x in half_width - half_size..=half_width + half_size {
+    //     for y in half_height - half_size..=half_height + half_size {
+    image.set_color_at(pos.x, pos.y, color).unwrap();
+    //     }
+    // }
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
@@ -139,7 +261,7 @@ struct GlaciersLabel;
 #[derive(Default)]
 struct GlaciersNode;
 impl ViewNode for GlaciersNode {
-    type ViewQuery = (&'static ViewTarget, &'static RasterizerImage);
+    type ViewQuery = (&'static ViewTarget, &'static GlaciersContext);
 
     fn run(
         &self,
