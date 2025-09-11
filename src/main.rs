@@ -6,10 +6,9 @@ use bevy::{
     core_pipeline::core_3d::graph::{Core3d, Node3d},
     ecs::query::QueryItem,
     image::TextureFormatPixelInfo,
-    math::bounding::Aabb2d,
     prelude::*,
     render::{
-        Render, RenderApp, RenderSet,
+        Render, RenderApp,
         extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_asset::RenderAssets,
         render_graph::{
