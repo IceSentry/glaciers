@@ -149,8 +149,6 @@ fn update(
         return Ok(());
     };
 
-    let start = Instant::now();
-
     if keyboard.just_pressed(KeyCode::KeyR) {
         for (e, _) in triangles {
             commands.entity(e).despawn();
@@ -186,6 +184,8 @@ fn update(
             println!("Image size: {} ", image.size());
         }
     }
+
+    let start = Instant::now();
 
     // Clear the image
     if let Some(data) = image.data.as_mut() {
