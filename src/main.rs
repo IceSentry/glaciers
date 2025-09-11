@@ -37,7 +37,7 @@ fn main() {
             GlaciersPlugin,
         ))
         .add_systems(Startup, setup)
-        .add_systems(Update, update)
+        .add_systems(Update, (handle_resize, handle_input, draw))
         .run();
 }
 
@@ -133,45 +133,57 @@ struct Triangle {
     points: [UVec2; 3],
 }
 
-fn update(
+fn handle_input(
     mut commands: Commands,
+    keyboard: Res<ButtonInput<KeyCode>>,
     mut glaciers_context: Query<&GlaciersContext>,
     mut images: ResMut<Assets<Image>>,
-    mut resize_events: EventReader<WindowResized>,
     triangles: Query<(Entity, &Triangle)>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut window: Query<&mut Window, With<PrimaryWindow>>,
-) -> Result<()> {
-    let Ok(glaciers_context) = glaciers_context.single_mut() else {
-        return Ok(());
-    };
-    let Some(image) = images.get_mut(glaciers_context.image.id()) else {
-        return Ok(());
-    };
-
+) {
     if keyboard.just_pressed(KeyCode::KeyR) {
+        let Ok(glaciers_context) = glaciers_context.single_mut() else {
+            return;
+        };
+        let Some(image) = images.get_mut(glaciers_context.image.id()) else {
+            return;
+        };
+
         for (e, _) in triangles {
             commands.entity(e).despawn();
         }
-        commands.spawn(Triangle {
-            points: [
-                UVec2::new(
-                    fastrand::u32(0..image.size().x),
-                    fastrand::u32(0..image.size().y),
-                ),
-                UVec2::new(
-                    fastrand::u32(0..image.size().x),
-                    fastrand::u32(0..image.size().y),
-                ),
-                UVec2::new(
-                    fastrand::u32(0..image.size().x),
-                    fastrand::u32(0..image.size().y),
-                ),
-            ],
-        });
+        for _ in 0..100 {
+            commands.spawn(Triangle {
+                points: [
+                    UVec2::new(
+                        fastrand::u32(0..image.size().x),
+                        fastrand::u32(0..image.size().y),
+                    ),
+                    UVec2::new(
+                        fastrand::u32(0..image.size().x),
+                        fastrand::u32(0..image.size().y),
+                    ),
+                    UVec2::new(
+                        fastrand::u32(0..image.size().x),
+                        fastrand::u32(0..image.size().y),
+                    ),
+                ],
+            });
+        }
     }
+}
 
-    // Resize when needed
+fn handle_resize(
+    mut glaciers_context: Query<&GlaciersContext>,
+    mut images: ResMut<Assets<Image>>,
+    mut resize_events: EventReader<WindowResized>,
+) {
+    let Ok(glaciers_context) = glaciers_context.single_mut() else {
+        return;
+    };
+    let Some(image) = images.get_mut(glaciers_context.image.id()) else {
+        return;
+    };
+
     for ev in resize_events.read() {
         if image.size_f32().x != ev.width * glaciers_context.scale
             || image.size_f32().y != ev.height * glaciers_context.scale
@@ -184,6 +196,20 @@ fn update(
             println!("Image size: {} ", image.size());
         }
     }
+}
+
+fn draw(
+    mut glaciers_context: Query<&GlaciersContext>,
+    mut images: ResMut<Assets<Image>>,
+    triangles: Query<(Entity, &Triangle)>,
+    mut window: Query<&mut Window, With<PrimaryWindow>>,
+) -> Result<()> {
+    let Ok(glaciers_context) = glaciers_context.single_mut() else {
+        return Ok(());
+    };
+    let Some(image) = images.get_mut(glaciers_context.image.id()) else {
+        return Ok(());
+    };
 
     let start = Instant::now();
 
@@ -202,11 +228,15 @@ fn update(
         draw_triangle(image, triangle.points);
     }
 
+    let frame_time = start.elapsed().as_secs_f32() * 1000.0;
+    let fps = 1000.0 / frame_time;
+
     window.single_mut().unwrap().title = format!(
-        "Glaciers - {}x{} {:.3}ms",
+        "Glaciers - {}x{} {:.2}ms {:.0}fps",
         image.size().x,
         image.size().y,
-        start.elapsed().as_secs_f32() / 1000.0
+        frame_time,
+        fps
     );
 
     Ok(())
@@ -241,7 +271,7 @@ fn draw_triangle(image: &mut Image, points: [UVec2; 3]) {
             if (abp >= 0 && bcp >= 0 && cap >= 0) || (abp <= 0 && bcp <= 0 && cap <= 0) {
                 draw_point(image, p.as_uvec2(), WHITE.into());
             } else {
-                draw_point(image, p.as_uvec2(), RED.into());
+                // draw_point(image, p.as_uvec2(), RED.into());
             }
         }
     }
