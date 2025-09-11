@@ -308,8 +308,6 @@ impl ViewNode for GlaciersNode {
     ) -> Result<(), NodeRunError> {
         let texture_blitter = world.resource::<GlaciersTextureBlitter>();
 
-        let post_process = view_target.post_process_write();
-
         let gpu_images = world.resource::<RenderAssets<GpuImage>>();
         let Some(image) = gpu_images.get(&rasterizer_image.image) else {
             return Ok(());
@@ -319,8 +317,7 @@ impl ViewNode for GlaciersNode {
             world.resource::<RenderDevice>().wgpu_device(),
             render_context.command_encoder(),
             &image.texture_view,
-            // TODO blit directly to render target
-            &post_process.destination,
+            &view_target.main_texture_view(),
         );
 
         Ok(())
