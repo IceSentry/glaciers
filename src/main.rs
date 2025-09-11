@@ -9,7 +9,7 @@ use bevy::{
     math::bounding::Aabb2d,
     prelude::*,
     render::{
-        RenderApp,
+        Render, RenderApp, RenderSet,
         extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_asset::RenderAssets,
         render_graph::{
@@ -18,7 +18,7 @@ use bevy::{
         render_resource::*,
         renderer::{RenderContext, RenderDevice},
         texture::GpuImage,
-        view::ViewTarget,
+        view::{ViewTarget, prepare_view_targets},
     },
     window::{PrimaryWindow, WindowResized},
 };
@@ -54,7 +54,6 @@ impl Plugin for GlaciersPlugin {
         // TODO move render graph to separate module
         // TODO consider using a custom graph on the camera
         render_app
-            .init_resource::<GlaciersTextureBlitter>()
             .add_render_graph_node::<ViewNodeRunner<GlaciersNode>>(Core3d, GlaciersLabel)
             .add_render_graph_edges(
                 Core3d,
@@ -63,7 +62,8 @@ impl Plugin for GlaciersPlugin {
                     GlaciersLabel,
                     Node3d::EndMainPassPostProcessing,
                 ),
-            );
+            )
+            .add_systems(Render, prepare_texture_blitter.after(prepare_view_targets));
     }
 }
 
@@ -327,19 +327,21 @@ struct GlaciersLabel;
 #[derive(Default)]
 struct GlaciersNode;
 impl ViewNode for GlaciersNode {
-    type ViewQuery = (&'static ViewTarget, &'static GlaciersContext);
+    type ViewQuery = (
+        &'static ViewTarget,
+        &'static GlaciersContext,
+        &'static GlaciersTextureBlitter,
+    );
 
     fn run(
         &self,
         _graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
-        (view_target, rasterizer_image): QueryItem<Self::ViewQuery>,
+        (view_target, glaciers_context, texture_blitter): QueryItem<Self::ViewQuery>,
         world: &World,
     ) -> Result<(), NodeRunError> {
-        let texture_blitter = world.resource::<GlaciersTextureBlitter>();
-
         let gpu_images = world.resource::<RenderAssets<GpuImage>>();
-        let Some(image) = gpu_images.get(&rasterizer_image.image) else {
+        let Some(image) = gpu_images.get(&glaciers_context.image) else {
             return Ok(());
         };
 
@@ -354,16 +356,21 @@ impl ViewNode for GlaciersNode {
     }
 }
 
-#[derive(Resource, Deref)]
+#[derive(Component, Deref)]
 struct GlaciersTextureBlitter(TextureBlitter);
 
-impl FromWorld for GlaciersTextureBlitter {
-    fn from_world(world: &mut World) -> Self {
-        let render_device = world.resource::<RenderDevice>();
+fn prepare_texture_blitter(
+    mut commands: Commands,
+    render_device: Res<RenderDevice>,
+    views: Query<(Entity, &ViewTarget)>,
+) {
+    for (e, view_target) in &views {
         let texture_blitter = wgpu::util::TextureBlitter::new(
             &render_device.wgpu_device(),
-            TextureFormat::bevy_default(),
+            view_target.main_texture_format(),
         );
-        Self(texture_blitter)
+        commands
+            .entity(e)
+            .insert(GlaciersTextureBlitter(texture_blitter));
     }
 }
