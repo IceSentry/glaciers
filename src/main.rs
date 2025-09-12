@@ -139,6 +139,9 @@ fn handle_input(
     mut images: ResMut<Assets<Image>>,
     triangles: Query<(Entity, &Triangle)>,
 ) {
+    if keyboard.just_pressed(KeyCode::Escape) || keyboard.just_pressed(KeyCode::KeyQ) {
+        std::process::exit(1);
+    }
     if keyboard.just_pressed(KeyCode::KeyR) {
         let Ok(glaciers_context) = glaciers_context.single_mut() else {
             return;
