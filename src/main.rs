@@ -8,14 +8,13 @@ use bevy::{
     },
     ecs::query::QueryItem,
     image::TextureFormatPixelInfo,
-    math::VectorSpace,
     prelude::*,
     render::{
         Render, RenderApp,
         extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_asset::RenderAssets,
         render_graph::{
-            NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel, ViewNode, ViewNodeRunner,
+            NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
         },
         render_resource::*,
         renderer::{RenderContext, RenderDevice},
@@ -214,7 +213,7 @@ fn handle_input(
 fn handle_resize(
     mut ctx: Query<&GlaciersContext>,
     mut images: ResMut<Assets<Image>>,
-    mut resize_events: EventReader<WindowResized>,
+    mut resize_events: MessageReader<WindowResized>,
 ) {
     let Ok(ctx) = ctx.single_mut() else {
         return;
@@ -253,7 +252,7 @@ fn draw(
 
     // Clear the image
     if let Some(data) = image.data.as_mut() {
-        for old_pixel in data.chunks_mut(image.texture_descriptor.format.pixel_size()) {
+        for old_pixel in data.chunks_mut(image.texture_descriptor.format.pixel_size().unwrap()) {
             old_pixel.copy_from_slice(&[0; 4]);
         }
     }
@@ -422,7 +421,7 @@ fn prepare_texture_blitter(
 ) {
     for (e, view_target) in &views {
         let texture_blitter = wgpu::util::TextureBlitter::new(
-            &render_device.wgpu_device(),
+            render_device.wgpu_device(),
             view_target.main_texture_format(),
         );
         commands
