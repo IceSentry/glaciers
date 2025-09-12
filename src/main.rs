@@ -91,6 +91,9 @@ fn setup(
         RenderAssetUsages::all(),
     );
 
+    let half_width = image.size_f32().x / 2.0;
+    let half_height = image.size_f32().y / 2.0;
+
     // camera
     commands.spawn((
         Camera3d::default(),
@@ -105,6 +108,19 @@ fn setup(
             ..default()
         },
     ));
+    commands.spawn(Triangle {
+        points: [
+            Vertex::new(
+                Vec3::new(half_width - 50.0, half_height + 40.0, 0.0),
+                RED.into(),
+            ),
+            Vertex::new(Vec3::new(half_width, half_height - 40.0, 0.0), GREEN.into()),
+            Vertex::new(
+                Vec3::new(half_width + 50.0, half_height + 40.0, 0.0),
+                BLUE.into(),
+            ),
+        ],
+    });
 }
 
 #[derive(Clone, Copy)]
@@ -145,9 +161,9 @@ fn handle_input(
             return;
         };
 
-        for (e, _) in triangles {
-            commands.entity(e).despawn();
-        }
+        // for (e, _) in triangles {
+        //     commands.entity(e).despawn();
+        // }
 
         let random_pos = || {
             Vec3::new(
@@ -161,13 +177,13 @@ fn handle_input(
             color: LinearRgba::new(fastrand::f32(), fastrand::f32(), fastrand::f32(), 1.0),
         };
         for _ in 0..100 {
-            commands.spawn(Triangle {
-                points: [
-                    Vertex::new(random_pos(), RED.into()),
-                    Vertex::new(random_pos(), GREEN.into()),
-                    Vertex::new(random_pos(), BLUE.into()),
-                ],
-            });
+            // commands.spawn(Triangle {
+            //     points: [
+            //         Vertex::new(random_pos(), RED.into()),
+            //         Vertex::new(random_pos(), GREEN.into()),
+            //         Vertex::new(random_pos(), BLUE.into()),
+            //     ],
+            // });
         }
     }
 }
@@ -265,10 +281,29 @@ fn draw_triangle(image: &mut Image, vertices: [Vertex; 3]) {
             let bcp = edge_function(b, c, p);
             let cap = edge_function(c, a, p);
 
+            let abc = edge_function(a, b, c);
+
+            let weight_a = bcp as f32 / abc as f32;
+            let weight_b = cap as f32 / abc as f32;
+            let weight_c = abp as f32 / abc as f32;
+
             // This is only needed because winding order is random right now.
             // Normally you only need to check if it's > 0.0
             if (abp >= 0 && bcp >= 0 && cap >= 0) || (abp <= 0 && bcp <= 0 && cap <= 0) {
-                draw_point(image, p.as_uvec2(), WHITE.into());
+                // const r = colourA.r * weightA + colourB.r * weightB + colourC.r * weightC;
+                // const g = colourA.g * weightA + colourB.g * weightB + colourC.g * weightC;
+                // const b = colourA.b * weightA + colourB.b * weightB + colourC.b * weightC;
+                // const colourP = new Colour(r, g, b);
+                let r = vertices[0].color.red * weight_a
+                    + vertices[1].color.red * weight_b
+                    + vertices[2].color.red * weight_c;
+                let g = vertices[0].color.green * weight_a
+                    + vertices[1].color.green * weight_b
+                    + vertices[2].color.green * weight_c;
+                let b = vertices[0].color.blue * weight_a
+                    + vertices[1].color.blue * weight_b
+                    + vertices[2].color.blue * weight_c;
+                draw_point(image, p.as_uvec2(), Color::srgba(r, g, b, 1.0));
             } else {
                 // draw_point(image, p.as_uvec2(), RED.into());
             }
@@ -276,9 +311,9 @@ fn draw_triangle(image: &mut Image, vertices: [Vertex; 3]) {
     }
 
     // Draw the outline useful for wireframe mode
-    draw_line(image, vertices[0].pos, vertices[1].pos, BLACK.into());
-    draw_line(image, vertices[1].pos, vertices[2].pos, BLACK.into());
-    draw_line(image, vertices[2].pos, vertices[0].pos, BLACK.into());
+    // draw_line(image, vertices[0].pos, vertices[1].pos, BLACK.into());
+    // draw_line(image, vertices[1].pos, vertices[2].pos, BLACK.into());
+    // draw_line(image, vertices[2].pos, vertices[0].pos, BLACK.into());
 
     // Draw each corners
     draw_point(image, vertices[0].pos.xy().as_uvec2(), RED.into());
