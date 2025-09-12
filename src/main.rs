@@ -90,26 +90,6 @@ fn setup(
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::all(),
     );
-    println!("Image size: {}", image.size());
-
-    let point_a = UVec2::new(
-        fastrand::u32(0..image.size().x),
-        fastrand::u32(0..image.size().y),
-    );
-
-    let point_b = UVec2::new(
-        fastrand::u32(0..image.size().x),
-        fastrand::u32(0..image.size().y),
-    );
-
-    let point_c = UVec2::new(
-        fastrand::u32(0..image.size().x),
-        fastrand::u32(0..image.size().y),
-    );
-
-    commands.spawn(Triangle {
-        points: [point_a, point_b, point_c],
-    });
 
     // camera
     commands.spawn((
@@ -127,9 +107,24 @@ fn setup(
     ));
 }
 
+#[derive(Clone, Copy)]
+pub struct Vertex {
+    pub pos: Vec3,
+    pub color: LinearRgba,
+}
+
+impl Vertex {
+    pub fn new(pos: Vec3, color: Color) -> Self {
+        Self {
+            pos: pos,
+            color: color.into(),
+        }
+    }
+}
+
 #[derive(Component)]
 struct Triangle {
-    points: [UVec2; 3],
+    points: [Vertex; 3],
 }
 
 fn handle_input(
@@ -153,21 +148,24 @@ fn handle_input(
         for (e, _) in triangles {
             commands.entity(e).despawn();
         }
+
+        let random_pos = || {
+            Vec3::new(
+                fastrand::f32() * image.size_f32().x,
+                fastrand::f32() * image.size_f32().y,
+                0.0,
+            )
+        };
+        let _random_vertex = || Vertex {
+            pos: random_pos(),
+            color: LinearRgba::new(fastrand::f32(), fastrand::f32(), fastrand::f32(), 1.0),
+        };
         for _ in 0..100 {
             commands.spawn(Triangle {
                 points: [
-                    UVec2::new(
-                        fastrand::u32(0..image.size().x),
-                        fastrand::u32(0..image.size().y),
-                    ),
-                    UVec2::new(
-                        fastrand::u32(0..image.size().x),
-                        fastrand::u32(0..image.size().y),
-                    ),
-                    UVec2::new(
-                        fastrand::u32(0..image.size().x),
-                        fastrand::u32(0..image.size().y),
-                    ),
+                    Vertex::new(random_pos(), RED.into()),
+                    Vertex::new(random_pos(), GREEN.into()),
+                    Vertex::new(random_pos(), BLUE.into()),
                 ],
             });
         }
@@ -248,20 +246,19 @@ fn edge_function(a: IVec2, b: IVec2, c: IVec2) -> i32 {
     (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
 }
 
-fn draw_triangle(image: &mut Image, points: [UVec2; 3]) {
+fn draw_triangle(image: &mut Image, vertices: [Vertex; 3]) {
     // Compute AABB of the triangle
-    let (min, max) = points
-        .iter()
-        .fold((points[0], points[0]), |(prev_min, prev_max), point| {
-            (point.min(prev_min), point.max(prev_max))
-        });
+    let (min, max) = vertices.iter().fold(
+        (vertices[0].pos, vertices[0].pos),
+        |(prev_min, prev_max), point| (point.pos.min(prev_min), point.pos.max(prev_max)),
+    );
 
     // Only check the pixels inside the AABB
-    for x in min.x..=max.x {
-        for y in min.y..=max.y {
-            let a = points[0].as_ivec2();
-            let b = points[1].as_ivec2();
-            let c = points[2].as_ivec2();
+    for x in min.x as u32..=max.x as u32 {
+        for y in min.y as u32..=max.y as u32 {
+            let a = vertices[0].pos.xy().as_ivec2();
+            let b = vertices[1].pos.xy().as_ivec2();
+            let c = vertices[2].pos.xy().as_ivec2();
 
             let p = UVec2::new(x, y).as_ivec2();
             let abp = edge_function(a, b, p);
@@ -279,17 +276,17 @@ fn draw_triangle(image: &mut Image, points: [UVec2; 3]) {
     }
 
     // Draw the outline useful for wireframe mode
-    draw_line(image, points[0], points[1], BLACK.into());
-    draw_line(image, points[1], points[2], BLACK.into());
-    draw_line(image, points[2], points[0], BLACK.into());
+    draw_line(image, vertices[0].pos, vertices[1].pos, BLACK.into());
+    draw_line(image, vertices[1].pos, vertices[2].pos, BLACK.into());
+    draw_line(image, vertices[2].pos, vertices[0].pos, BLACK.into());
 
     // Draw each corners
-    draw_point(image, points[0], RED.into());
-    draw_point(image, points[1], GREEN.into());
-    draw_point(image, points[2], BLUE.into());
+    draw_point(image, vertices[0].pos.xy().as_uvec2(), RED.into());
+    draw_point(image, vertices[1].pos.xy().as_uvec2(), GREEN.into());
+    draw_point(image, vertices[2].pos.xy().as_uvec2(), BLUE.into());
 }
 
-fn draw_line(image: &mut Image, start: UVec2, end: UVec2, color: Color) {
+fn draw_line(image: &mut Image, start: Vec3, end: Vec3, color: Color) {
     let mut x0 = start.x as i32;
     let mut y0 = start.y as i32;
     let x1 = end.x as i32;
