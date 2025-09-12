@@ -2,10 +2,13 @@ use std::time::Instant;
 
 use bevy::{
     asset::RenderAssetUsages,
-    color::palettes::css::{BLACK, BLUE, GREEN, RED, WHITE},
-    core_pipeline::core_3d::graph::{Core3d, Node3d},
+    core_pipeline::{
+        core_3d::graph::{Core3d, Node3d},
+        tonemapping::Tonemapping,
+    },
     ecs::query::QueryItem,
     image::TextureFormatPixelInfo,
+    math::VectorSpace,
     prelude::*,
     render::{
         Render, RenderApp,
@@ -23,16 +26,24 @@ use bevy::{
 };
 use wgpu::util::TextureBlitter;
 
+pub const BLACK: Srgba = Srgba::rgb(0.0, 0.0, 0.0);
+pub const WHITE: Srgba = Srgba::rgb(1.0, 1.0, 1.0);
+
+pub const RED: Srgba = Srgba::rgb(1.0, 0.0, 0.0);
+pub const GREEN: Srgba = Srgba::rgb(0.0, 1.0, 0.0);
+pub const BLUE: Srgba = Srgba::rgb(0.0, 0.0, 1.0);
+
 fn main() {
     App::new()
         .add_plugins((
-            DefaultPlugins.set(WindowPlugin {
-                primary_window: Some(Window {
-                    present_mode: bevy::window::PresentMode::AutoNoVsync,
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }),
+            DefaultPlugins,
+            // .set(WindowPlugin {
+            //     primary_window: Some(Window {
+            //         present_mode: bevy::window::PresentMode::AutoNoVsync,
+            //         ..Default::default()
+            //     }),
+            //     ..Default::default()
+            // }),
             GlaciersPlugin,
         ))
         .add_systems(Startup, setup)
@@ -57,9 +68,9 @@ impl Plugin for GlaciersPlugin {
             .add_render_graph_edges(
                 Core3d,
                 (
-                    Node3d::Tonemapping,
-                    GlaciersLabel,
                     Node3d::EndMainPassPostProcessing,
+                    GlaciersLabel,
+                    Node3d::Upscaling,
                 ),
             )
             .add_systems(Render, prepare_texture_blitter.after(prepare_view_targets));
@@ -102,6 +113,7 @@ fn setup(
             clear_color: ClearColorConfig::Custom(Color::BLACK),
             ..default()
         },
+        Tonemapping::None,
         GlaciersContext {
             image: images.add(image),
             scale,
@@ -277,6 +289,7 @@ fn draw_triangle(image: &mut Image, vertices: [Vertex; 3]) {
             let c = vertices[2].pos.xy().as_ivec2();
 
             let p = UVec2::new(x, y).as_ivec2();
+
             let abp = edge_function(a, b, p);
             let bcp = edge_function(b, c, p);
             let cap = edge_function(c, a, p);
@@ -290,20 +303,19 @@ fn draw_triangle(image: &mut Image, vertices: [Vertex; 3]) {
             // This is only needed because winding order is random right now.
             // Normally you only need to check if it's > 0.0
             if (abp >= 0 && bcp >= 0 && cap >= 0) || (abp <= 0 && bcp <= 0 && cap <= 0) {
-                // const r = colourA.r * weightA + colourB.r * weightB + colourC.r * weightC;
-                // const g = colourA.g * weightA + colourB.g * weightB + colourC.g * weightC;
-                // const b = colourA.b * weightA + colourB.b * weightB + colourC.b * weightC;
-                // const colourP = new Colour(r, g, b);
-                let r = vertices[0].color.red * weight_a
-                    + vertices[1].color.red * weight_b
-                    + vertices[2].color.red * weight_c;
-                let g = vertices[0].color.green * weight_a
-                    + vertices[1].color.green * weight_b
-                    + vertices[2].color.green * weight_c;
-                let b = vertices[0].color.blue * weight_a
-                    + vertices[1].color.blue * weight_b
-                    + vertices[2].color.blue * weight_c;
-                draw_point(image, p.as_uvec2(), Color::srgba(r, g, b, 1.0));
+                // I actually need a Mat4x3 but glam doesn't support that
+                let color = Mat4::from_cols(
+                    vertices[0].color.to_vec4(),
+                    vertices[1].color.to_vec4(),
+                    vertices[2].color.to_vec4(),
+                    Vec4::ZERO,
+                ) * Vec4::new(weight_a, weight_b, weight_c, 0.0);
+
+                draw_point(
+                    image,
+                    p.as_uvec2(),
+                    Color::srgba(color.x, color.y, color.z, color.w),
+                );
             } else {
                 // draw_point(image, p.as_uvec2(), RED.into());
             }
