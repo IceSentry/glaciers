@@ -120,19 +120,17 @@ fn setup(
             ..default()
         },
     ));
-    commands.spawn(Triangle {
-        points: [
-            Vertex::new(
-                Vec3::new(half_width - 50.0, half_height + 40.0, 0.0),
-                RED.into(),
-            ),
-            Vertex::new(Vec3::new(half_width, half_height - 40.0, 0.0), GREEN.into()),
-            Vertex::new(
-                Vec3::new(half_width + 50.0, half_height + 40.0, 0.0),
-                BLUE.into(),
-            ),
-        ],
-    });
+    commands.spawn(Triangle::new([
+        Vertex::new(
+            Vec3::new(half_width - 50.0, half_height + 40.0, 0.0),
+            RED.into(),
+        ),
+        Vertex::new(Vec3::new(half_width, half_height - 40.0, 0.0), GREEN.into()),
+        Vertex::new(
+            Vec3::new(half_width + 50.0, half_height + 40.0, 0.0),
+            BLUE.into(),
+        ),
+    ]));
 }
 
 #[derive(Clone, Copy)]
@@ -152,7 +150,18 @@ impl Vertex {
 
 #[derive(Component)]
 struct Triangle {
-    points: [Vertex; 3],
+    vertices: [Vertex; 3],
+    aabb: (Vec3, Vec3),
+}
+
+impl Triangle {
+    fn new(vertices: [Vertex; 3]) -> Self {
+        let aabb = vertices.iter().fold(
+            (vertices[0].pos, vertices[0].pos),
+            |(prev_min, prev_max), point| (point.pos.min(prev_min), point.pos.max(prev_max)),
+        );
+        Self { vertices, aabb }
+    }
 }
 
 fn handle_input(
@@ -173,9 +182,9 @@ fn handle_input(
             return;
         };
 
-        // for (e, _) in triangles {
-        //     commands.entity(e).despawn();
-        // }
+        for (e, _) in triangles {
+            commands.entity(e).despawn();
+        }
 
         let random_pos = || {
             Vec3::new(
@@ -189,36 +198,37 @@ fn handle_input(
             color: LinearRgba::new(fastrand::f32(), fastrand::f32(), fastrand::f32(), 1.0),
         };
         for _ in 0..100 {
-            // commands.spawn(Triangle {
-            //     points: [
-            //         Vertex::new(random_pos(), RED.into()),
-            //         Vertex::new(random_pos(), GREEN.into()),
-            //         Vertex::new(random_pos(), BLUE.into()),
-            //     ],
-            // });
+            let vertices = [
+                // Vertex::new(random_pos(), RED.into()),
+                // Vertex::new(random_pos(), GREEN.into()),
+                // Vertex::new(random_pos(), BLUE.into()),
+                _random_vertex(),
+                _random_vertex(),
+                _random_vertex(),
+            ];
+            commands.spawn(Triangle::new(vertices));
         }
     }
 }
 
 fn handle_resize(
-    mut glaciers_context: Query<&GlaciersContext>,
+    mut ctx: Query<&GlaciersContext>,
     mut images: ResMut<Assets<Image>>,
     mut resize_events: EventReader<WindowResized>,
 ) {
-    let Ok(glaciers_context) = glaciers_context.single_mut() else {
+    let Ok(ctx) = ctx.single_mut() else {
         return;
     };
-    let Some(image) = images.get_mut(glaciers_context.image.id()) else {
+    let Some(image) = images.get_mut(ctx.image.id()) else {
         return;
     };
 
     for ev in resize_events.read() {
-        if image.size_f32().x != ev.width * glaciers_context.scale
-            || image.size_f32().y != ev.height * glaciers_context.scale
+        if image.size_f32().x != ev.width * ctx.scale || image.size_f32().y != ev.height * ctx.scale
         {
             image.resize(Extent3d {
-                width: (ev.width * glaciers_context.scale) as u32,
-                height: (ev.height * glaciers_context.scale) as u32,
+                width: (ev.width * ctx.scale) as u32,
+                height: (ev.height * ctx.scale) as u32,
                 depth_or_array_layers: 1,
             });
             println!("Image size: {} ", image.size());
@@ -227,15 +237,15 @@ fn handle_resize(
 }
 
 fn draw(
-    mut glaciers_context: Query<&GlaciersContext>,
+    mut ctx: Query<&GlaciersContext>,
     mut images: ResMut<Assets<Image>>,
     triangles: Query<(Entity, &Triangle)>,
     mut window: Query<&mut Window, With<PrimaryWindow>>,
 ) -> Result<()> {
-    let Ok(glaciers_context) = glaciers_context.single_mut() else {
+    let Ok(ctx) = ctx.single_mut() else {
         return Ok(());
     };
-    let Some(image) = images.get_mut(glaciers_context.image.id()) else {
+    let Some(image) = images.get_mut(ctx.image.id()) else {
         return Ok(());
     };
 
@@ -253,7 +263,7 @@ fn draw(
     let _center = UVec2::new(half_width, half_height);
 
     for (_, triangle) in triangles {
-        draw_triangle(image, triangle.points);
+        draw_triangle(image, triangle);
     }
 
     let frame_time = start.elapsed().as_secs_f32() * 1000.0;
@@ -274,13 +284,13 @@ fn edge_function(a: IVec2, b: IVec2, c: IVec2) -> i32 {
     (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
 }
 
-fn draw_triangle(image: &mut Image, vertices: [Vertex; 3]) {
-    // Compute AABB of the triangle
-    let (min, max) = vertices.iter().fold(
-        (vertices[0].pos, vertices[0].pos),
-        |(prev_min, prev_max), point| (point.pos.min(prev_min), point.pos.max(prev_max)),
-    );
-
+fn draw_triangle(
+    image: &mut Image,
+    Triangle {
+        vertices,
+        aabb: (min, max),
+    }: &Triangle,
+) {
     // Only check the pixels inside the AABB
     for x in min.x as u32..=max.x as u32 {
         for y in min.y as u32..=max.y as u32 {
