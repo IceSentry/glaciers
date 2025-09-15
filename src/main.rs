@@ -2,12 +2,14 @@ use std::time::Instant;
 
 use bevy::{
     asset::RenderAssetUsages,
+    color::palettes::css::MAGENTA,
     core_pipeline::{
         core_3d::graph::{Core3d, Node3d},
         tonemapping::Tonemapping,
     },
     ecs::query::QueryItem,
     image::TextureFormatPixelInfo,
+    mesh::PlaneMeshBuilder,
     prelude::*,
     render::{
         Render, RenderApp,
@@ -46,7 +48,7 @@ fn main() {
             GlaciersPlugin,
         ))
         .add_systems(Startup, setup)
-        .add_systems(Update, (handle_resize, handle_input, draw))
+        .add_systems(Update, (rotate, handle_resize, handle_input, draw))
         .run();
 }
 
@@ -85,10 +87,11 @@ struct GlaciersContext {
 fn setup(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
     let res = &window.single().unwrap().resolution;
-    let scale = 0.25;
+    let scale = 0.5;
     let image = Image::new_fill(
         Extent3d {
             width: (res.width() * scale) as u32,
@@ -107,7 +110,7 @@ fn setup(
     // camera
     commands.spawn((
         Camera3d::default(),
-        Transform::default(),
+        Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
         Camera {
             clear_color: ClearColorConfig::Custom(Color::BLACK),
             ..default()
@@ -130,9 +133,27 @@ fn setup(
             BLUE.into(),
         ),
     ]));
+
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        Transform::from_xyz(0.0, 1.0, 0.0),
+        Rotates,
+    ));
+
+    // circular base
+    commands.spawn((
+        Mesh3d(
+            meshes.add(
+                PlaneMeshBuilder::new(Dir3::Y, Vec2::splat(3.0))
+                    .subdivisions(0)
+                    .build(),
+            ),
+        ),
+        Transform::default(),
+    ));
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Vertex {
     pub pos: Vec3,
     pub color: LinearRgba,
@@ -164,49 +185,42 @@ impl Triangle {
 }
 
 fn handle_input(
-    mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut glaciers_context: Query<&GlaciersContext>,
-    mut images: ResMut<Assets<Image>>,
-    triangles: Query<(Entity, &Triangle)>,
+    mut camera: Query<&mut Transform, With<Camera>>,
+    time: Res<Time>,
 ) {
-    if keyboard.just_pressed(KeyCode::Escape) || keyboard.just_pressed(KeyCode::KeyQ) {
+    // Exit
+    if keyboard.just_pressed(KeyCode::Escape) {
         std::process::exit(1);
     }
-    if keyboard.just_pressed(KeyCode::KeyR) {
-        let Ok(glaciers_context) = glaciers_context.single_mut() else {
-            return;
+
+    // Camera controller
+    let speed = 5.0;
+    let rotation_speed = speed * 2.0;
+    for mut transform in &mut camera {
+        let forward: Vec3 = transform.forward().into();
+        let left: Vec3 = transform.left().into();
+        let up: Vec3 = transform.up().into();
+        if keyboard.pressed(KeyCode::KeyW) {
+            transform.translation += forward * time.delta_secs() * speed;
+        }
+        if keyboard.pressed(KeyCode::KeyS) {
+            transform.translation -= forward * time.delta_secs() * speed;
+        }
+        if keyboard.pressed(KeyCode::KeyA) {
+            transform.translation += left * time.delta_secs() * rotation_speed;
+        }
+        if keyboard.pressed(KeyCode::KeyD) {
+            transform.translation -= left * time.delta_secs() * rotation_speed;
+        }
+        if keyboard.pressed(KeyCode::KeyQ) {
+            transform.translation -= up * time.delta_secs() * rotation_speed;
         };
-        let Some(image) = images.get_mut(glaciers_context.image.id()) else {
-            return;
+        if keyboard.pressed(KeyCode::KeyE) {
+            transform.translation += up * time.delta_secs() * rotation_speed;
         };
 
-        for (e, _) in triangles {
-            commands.entity(e).despawn();
-        }
-
-        let random_pos = || {
-            Vec3::new(
-                fastrand::f32() * image.size_f32().x,
-                fastrand::f32() * image.size_f32().y,
-                0.0,
-            )
-        };
-        let _random_vertex = || Vertex {
-            pos: random_pos(),
-            color: LinearRgba::new(fastrand::f32(), fastrand::f32(), fastrand::f32(), 1.0),
-        };
-        for _ in 0..100 {
-            let vertices = [
-                // Vertex::new(random_pos(), RED.into()),
-                // Vertex::new(random_pos(), GREEN.into()),
-                // Vertex::new(random_pos(), BLUE.into()),
-                _random_vertex(),
-                _random_vertex(),
-                _random_vertex(),
-            ];
-            commands.spawn(Triangle::new(vertices));
-        }
+        transform.look_at(Vec3::ZERO, Vec3::Y);
     }
 }
 
@@ -238,13 +252,18 @@ fn handle_resize(
 fn draw(
     mut ctx: Query<&GlaciersContext>,
     mut images: ResMut<Assets<Image>>,
-    triangles: Query<(Entity, &Triangle)>,
     mut window: Query<&mut Window, With<PrimaryWindow>>,
+    meshes: Query<(&Mesh3d, &GlobalTransform)>,
+    meshes_assets: Res<Assets<Mesh>>,
+    views: Query<(&Camera, &GlobalTransform)>,
 ) -> Result<()> {
     let Ok(ctx) = ctx.single_mut() else {
         return Ok(());
     };
     let Some(image) = images.get_mut(ctx.image.id()) else {
+        return Ok(());
+    };
+    let Ok((camera, global_camera)) = views.single() else {
         return Ok(());
     };
 
@@ -257,12 +276,69 @@ fn draw(
         }
     }
 
-    let half_width = image.size().x / 2;
-    let half_height = image.size().y / 2;
-    let _center = UVec2::new(half_width, half_height);
+    for (mesh_3d, transform) in &meshes {
+        let Some(mesh) = meshes_assets.get(mesh_3d.id()) else {
+            warn!("Missing mesh asset");
+            continue;
+        };
+        let Some(pos) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) else {
+            warn!("Missing vertex attribute position");
+            continue;
+        };
+        let Some(pos) = pos.as_float3() else {
+            warn!("Failed to convert pos to float3");
+            continue;
+        };
+        if let Some(indices) = mesh.indices() {
+            let mut primitive_id = 0;
 
-    for (_, triangle) in triangles {
-        draw_triangle(image, triangle);
+            let mut iter = indices.iter().peekable();
+            'outer: while iter.peek().is_some() {
+                let tri_indices = [
+                    iter.next().unwrap(),
+                    iter.next().unwrap(),
+                    iter.next().unwrap(),
+                ];
+                fastrand::seed(primitive_id);
+                let color = Color::srgba(fastrand::f32(), fastrand::f32(), fastrand::f32(), 1.0);
+                let mut vertices = [Vertex::new(Vec3::ZERO, MAGENTA.into()); 3];
+                for (i, &tri_i) in tri_indices.iter().enumerate() {
+                    let pos: Vec3 = pos[tri_i].into();
+                    let pos = transform.transform_point(pos);
+                    let view_pos = match camera.world_to_viewport_with_depth(global_camera, pos) {
+                        Ok(view_pos) => view_pos,
+                        Err(err) => {
+                            warn!("Triangle needs to be clipped. {err:?}");
+                            continue 'outer;
+                        }
+                    };
+                    let view_pos = view_pos * ctx.scale;
+                    if view_pos.y < 0.0
+                        || view_pos.y > image.size_f32().y
+                        || view_pos.x < 0.0
+                        || view_pos.x > image.size_f32().x
+                    {
+                        continue 'outer;
+                    }
+                    vertices[i] = Vertex::new(view_pos, color);
+                }
+                draw_triangle(image, &Triangle::new(vertices));
+                primitive_id += 1;
+            }
+        } else {
+            for x in pos.chunks(3) {
+                let &[pos0, pos1, pos2] = x else {
+                    unreachable!()
+                };
+                info!("drawing triangle");
+                let tri = Triangle::new([
+                    Vertex::new(pos0.into(), RED.into()),
+                    Vertex::new(pos1.into(), RED.into()),
+                    Vertex::new(pos2.into(), RED.into()),
+                ]);
+                draw_triangle(image, &tri);
+            }
+        }
     }
 
     let frame_time = start.elapsed().as_secs_f32() * 1000.0;
@@ -332,14 +408,14 @@ fn draw_triangle(
     }
 
     // Draw the outline useful for wireframe mode
-    // draw_line(image, vertices[0].pos, vertices[1].pos, BLACK.into());
-    // draw_line(image, vertices[1].pos, vertices[2].pos, BLACK.into());
-    // draw_line(image, vertices[2].pos, vertices[0].pos, BLACK.into());
+    draw_line(image, vertices[0].pos, vertices[1].pos, BLACK.into());
+    draw_line(image, vertices[1].pos, vertices[2].pos, BLACK.into());
+    draw_line(image, vertices[2].pos, vertices[0].pos, BLACK.into());
 
     // Draw each corners
-    draw_point(image, vertices[0].pos.xy().as_uvec2(), RED.into());
-    draw_point(image, vertices[1].pos.xy().as_uvec2(), GREEN.into());
-    draw_point(image, vertices[2].pos.xy().as_uvec2(), BLUE.into());
+    // draw_point(image, vertices[0].pos.xy().as_uvec2(), RED.into());
+    // draw_point(image, vertices[1].pos.xy().as_uvec2(), GREEN.into());
+    // draw_point(image, vertices[2].pos.xy().as_uvec2(), BLUE.into());
 }
 
 fn draw_line(image: &mut Image, start: Vec3, end: Vec3, color: Color) {
@@ -373,7 +449,7 @@ fn draw_line(image: &mut Image, start: Vec3, end: Vec3, color: Color) {
 }
 
 fn draw_point(image: &mut Image, pos: UVec2, color: Color) {
-    image.set_color_at(pos.x, pos.y, color).unwrap();
+    let _ = image.set_color_at(pos.x, pos.y, color);
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
@@ -427,5 +503,17 @@ fn prepare_texture_blitter(
         commands
             .entity(e)
             .insert(GlaciersTextureBlitter(texture_blitter));
+    }
+}
+
+#[derive(Component)]
+struct Rotates;
+
+/// Rotates any entity around the x and y axis
+fn rotate(time: Res<Time>, mut query: Query<&mut Transform, With<Rotates>>) {
+    let speed = 1.5;
+    for mut transform in &mut query {
+        transform.rotate_x(0.55 * time.delta_secs() * speed);
+        transform.rotate_z(0.15 * time.delta_secs() * speed);
     }
 }
