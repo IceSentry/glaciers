@@ -60,6 +60,7 @@ fn setup(
             ..default()
         },
     ));
+    fastrand::seed(42);
     let seed = fastrand::u64(..);
     for i in 0..1000 {
         fastrand::seed(i + seed);

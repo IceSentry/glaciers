@@ -195,7 +195,7 @@ fn draw(
                 }
                 let triangle = Triangle::new(vertices);
                 canvas.draw_triangle(&triangle);
-                canvas.draw_triangle_wireframe(&triangle, BLACK.into());
+                canvas.draw_triangle_wireframe(&triangle, BLACK.to_u8_array());
 
                 primitive_id += 1;
             }
