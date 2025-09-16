@@ -3,29 +3,14 @@ use std::time::Instant;
 use bevy::{
     asset::RenderAssetUsages,
     color::palettes::css::MAGENTA,
-    core_pipeline::{
-        core_3d::graph::{Core3d, Node3d},
-        tonemapping::Tonemapping,
-    },
-    ecs::query::QueryItem,
+    core_pipeline::tonemapping::Tonemapping,
     image::TextureFormatPixelInfo,
     mesh::PlaneMeshBuilder,
     prelude::*,
-    render::{
-        Render, RenderApp,
-        extract_component::{ExtractComponent, ExtractComponentPlugin},
-        render_asset::RenderAssets,
-        render_graph::{
-            NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
-        },
-        render_resource::*,
-        renderer::{RenderContext, RenderDevice},
-        texture::GpuImage,
-        view::{ViewTarget, prepare_view_targets},
-    },
+    render::render_resource::*,
     window::{PrimaryWindow, WindowResized},
 };
-use wgpu::util::TextureBlitter;
+use glaciers::{GlaciersContext, GlaciersPlugin};
 
 pub const BLACK: Srgba = Srgba::rgb(0.0, 0.0, 0.0);
 pub const WHITE: Srgba = Srgba::rgb(1.0, 1.0, 1.0);
@@ -36,52 +21,10 @@ pub const BLUE: Srgba = Srgba::rgb(0.0, 0.0, 1.0);
 
 fn main() {
     App::new()
-        .add_plugins((
-            DefaultPlugins,
-            // .set(WindowPlugin {
-            //     primary_window: Some(Window {
-            //         present_mode: bevy::window::PresentMode::AutoNoVsync,
-            //         ..Default::default()
-            //     }),
-            //     ..Default::default()
-            // }),
-            GlaciersPlugin,
-        ))
+        .add_plugins((DefaultPlugins, GlaciersPlugin))
         .add_systems(Startup, setup)
         .add_systems(Update, (rotate, handle_resize, handle_input, draw))
         .run();
-}
-
-struct GlaciersPlugin;
-impl Plugin for GlaciersPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_plugins(ExtractComponentPlugin::<GlaciersContext>::default());
-    }
-
-    fn finish(&self, app: &mut App) {
-        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
-            return;
-        };
-        // TODO move render graph to separate module
-        // TODO consider using a custom graph on the camera
-        render_app
-            .add_render_graph_node::<ViewNodeRunner<GlaciersNode>>(Core3d, GlaciersLabel)
-            .add_render_graph_edges(
-                Core3d,
-                (
-                    Node3d::EndMainPassPostProcessing,
-                    GlaciersLabel,
-                    Node3d::Upscaling,
-                ),
-            )
-            .add_systems(Render, prepare_texture_blitter.after(prepare_view_targets));
-    }
-}
-
-#[derive(Component, Default, Clone, ExtractComponent)]
-struct GlaciersContext {
-    image: Handle<Image>,
-    scale: f32,
 }
 
 fn setup(
@@ -91,7 +34,7 @@ fn setup(
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
     let res = &window.single().unwrap().resolution;
-    let scale = 0.5;
+    let scale = 1.0;
     let image = Image::new_fill(
         Extent3d {
             width: (res.width() * scale) as u32,
@@ -122,17 +65,6 @@ fn setup(
             ..default()
         },
     ));
-    commands.spawn(Triangle::new([
-        Vertex::new(
-            Vec3::new(half_width - 50.0, half_height + 40.0, 0.0),
-            RED.into(),
-        ),
-        Vertex::new(Vec3::new(half_width, half_height - 40.0, 0.0), GREEN.into()),
-        Vertex::new(
-            Vec3::new(half_width + 50.0, half_height + 40.0, 0.0),
-            BLUE.into(),
-        ),
-    ]));
 
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
@@ -140,7 +72,6 @@ fn setup(
         Rotates,
     ));
 
-    // circular base
     commands.spawn((
         Mesh3d(
             meshes.add(
@@ -322,7 +253,10 @@ fn draw(
                     }
                     vertices[i] = Vertex::new(view_pos, color);
                 }
-                draw_triangle(image, &Triangle::new(vertices));
+                let triangle = Triangle::new(vertices);
+                draw_triangle(image, &triangle);
+                draw_triangle_wireframe(image, &triangle, BLACK.into());
+
                 primitive_id += 1;
             }
         } else {
@@ -330,13 +264,13 @@ fn draw(
                 let &[pos0, pos1, pos2] = x else {
                     unreachable!()
                 };
-                info!("drawing triangle");
                 let tri = Triangle::new([
                     Vertex::new(pos0.into(), RED.into()),
                     Vertex::new(pos1.into(), RED.into()),
                     Vertex::new(pos2.into(), RED.into()),
                 ]);
                 draw_triangle(image, &tri);
+                draw_triangle_wireframe(image, &tri, BLACK.into());
             }
         }
     }
@@ -359,13 +293,12 @@ fn edge_function(a: IVec2, b: IVec2, c: IVec2) -> i32 {
     (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
 }
 
-fn draw_triangle(
-    image: &mut Image,
-    Triangle {
+fn draw_triangle(image: &mut Image, triangle: &Triangle) {
+    let Triangle {
         vertices,
         aabb: (min, max),
-    }: &Triangle,
-) {
+    } = triangle;
+
     // Only check the pixels inside the AABB
     for x in min.x as u32..=max.x as u32 {
         for y in min.y as u32..=max.y as u32 {
@@ -385,37 +318,36 @@ fn draw_triangle(
             let weight_b = cap as f32 / abc as f32;
             let weight_c = abp as f32 / abc as f32;
 
-            // This is only needed because winding order is random right now.
-            // Normally you only need to check if it's > 0.0
+            // Normally you only need to check one of these, but I don't know the winding order of
+            // the triangle
             if (abp >= 0 && bcp >= 0 && cap >= 0) || (abp <= 0 && bcp <= 0 && cap <= 0) {
-                // I actually need a Mat4x3 but glam doesn't support that
-                let color = Mat4::from_cols(
-                    vertices[0].color.to_vec4(),
-                    vertices[1].color.to_vec4(),
-                    vertices[2].color.to_vec4(),
-                    Vec4::ZERO,
-                ) * Vec4::new(weight_a, weight_b, weight_c, 0.0);
+                let weights = Vec3::new(weight_a, weight_b, weight_c);
+                let color = Mat3::from_cols(
+                    vertices[0].color.to_vec3(),
+                    vertices[1].color.to_vec3(),
+                    vertices[2].color.to_vec3(),
+                ) * weights;
+                let alpha = Vec3::new(
+                    vertices[0].color.alpha(),
+                    vertices[1].color.alpha(),
+                    vertices[2].color.alpha(),
+                )
+                .dot(weights);
 
                 draw_point(
                     image,
                     p.as_uvec2(),
-                    Color::srgba(color.x, color.y, color.z, color.w),
+                    Color::srgba(color.x, color.y, color.z, alpha),
                 );
-            } else {
-                // draw_point(image, p.as_uvec2(), RED.into());
             }
         }
     }
+}
 
-    // Draw the outline useful for wireframe mode
-    draw_line(image, vertices[0].pos, vertices[1].pos, BLACK.into());
-    draw_line(image, vertices[1].pos, vertices[2].pos, BLACK.into());
-    draw_line(image, vertices[2].pos, vertices[0].pos, BLACK.into());
-
-    // Draw each corners
-    // draw_point(image, vertices[0].pos.xy().as_uvec2(), RED.into());
-    // draw_point(image, vertices[1].pos.xy().as_uvec2(), GREEN.into());
-    // draw_point(image, vertices[2].pos.xy().as_uvec2(), BLUE.into());
+fn draw_triangle_wireframe(image: &mut Image, Triangle { vertices, .. }: &Triangle, color: Color) {
+    draw_line(image, vertices[0].pos, vertices[1].pos, color);
+    draw_line(image, vertices[1].pos, vertices[2].pos, color);
+    draw_line(image, vertices[2].pos, vertices[0].pos, color);
 }
 
 fn draw_line(image: &mut Image, start: Vec3, end: Vec3, color: Color) {
@@ -450,60 +382,6 @@ fn draw_line(image: &mut Image, start: Vec3, end: Vec3, color: Color) {
 
 fn draw_point(image: &mut Image, pos: UVec2, color: Color) {
     let _ = image.set_color_at(pos.x, pos.y, color);
-}
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-struct GlaciersLabel;
-
-#[derive(Default)]
-struct GlaciersNode;
-impl ViewNode for GlaciersNode {
-    type ViewQuery = (
-        &'static ViewTarget,
-        &'static GlaciersContext,
-        &'static GlaciersTextureBlitter,
-    );
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        (view_target, glaciers_context, texture_blitter): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        let gpu_images = world.resource::<RenderAssets<GpuImage>>();
-        let Some(image) = gpu_images.get(&glaciers_context.image) else {
-            return Ok(());
-        };
-
-        texture_blitter.copy(
-            world.resource::<RenderDevice>().wgpu_device(),
-            render_context.command_encoder(),
-            &image.texture_view,
-            &view_target.main_texture_view(),
-        );
-
-        Ok(())
-    }
-}
-
-#[derive(Component, Deref)]
-struct GlaciersTextureBlitter(TextureBlitter);
-
-fn prepare_texture_blitter(
-    mut commands: Commands,
-    render_device: Res<RenderDevice>,
-    views: Query<(Entity, &ViewTarget)>,
-) {
-    for (e, view_target) in &views {
-        let texture_blitter = wgpu::util::TextureBlitter::new(
-            render_device.wgpu_device(),
-            view_target.main_texture_format(),
-        );
-        commands
-            .entity(e)
-            .insert(GlaciersTextureBlitter(texture_blitter));
-    }
 }
 
 #[derive(Component)]
