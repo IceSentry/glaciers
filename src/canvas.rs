@@ -2,6 +2,7 @@ use bevy::{image::TextureFormatPixelInfo, prelude::*};
 
 pub struct GlaciersCanvas<'a> {
     pub(crate) color: &'a mut Image,
+    pub(crate) pixel_size: usize,
     // depth: Image,
 }
 
@@ -24,11 +25,22 @@ impl<'a> GlaciersCanvas<'a> {
         }
     }
 
-    pub fn draw_point(&mut self, pos: UVec2, color: Color) {
-        let _ = self.color.set_color_at(pos.x, pos.y, color);
+    // #[inline]
+    pub fn draw_point(&mut self, pos: UVec2, color: [u8; 4]) {
+        let width = self.color.texture_descriptor.size.width;
+        let pixel_offset = pos.y * width + pos.x;
+        let offset = pixel_offset as usize * self.pixel_size;
+
+        let data = self.color.data.as_mut().unwrap();
+
+        let [r, g, b, a] = color;
+        data[offset + 0] = r;
+        data[offset + 1] = g;
+        data[offset + 2] = b;
+        data[offset + 3] = a;
     }
 
-    pub fn draw_line(&mut self, start: Vec3, end: Vec3, color: Color) {
+    pub fn draw_line(&mut self, start: Vec3, end: Vec3, color: [u8; 4]) {
         let mut x0 = start.x as i32;
         let mut y0 = start.y as i32;
         let x1 = end.x as i32;
@@ -58,7 +70,11 @@ impl<'a> GlaciersCanvas<'a> {
         }
     }
 
-    pub fn draw_triangle_wireframe(&mut self, Triangle { vertices, .. }: &Triangle, color: Color) {
+    pub fn draw_triangle_wireframe(
+        &mut self,
+        Triangle { vertices, .. }: &Triangle,
+        color: [u8; 4],
+    ) {
         self.draw_line(vertices[0].pos, vertices[1].pos, color);
         self.draw_line(vertices[1].pos, vertices[2].pos, color);
         self.draw_line(vertices[2].pos, vertices[0].pos, color);
@@ -98,20 +114,24 @@ impl<'a> GlaciersCanvas<'a> {
                     let weight_b = cap as f32 / abc as f32;
                     let weight_c = abp as f32 / abc as f32;
 
-                    let weights = Vec3::new(weight_a, weight_b, weight_c);
-                    let color = Mat3::from_cols(
-                        vertices[0].color.to_vec3(),
-                        vertices[1].color.to_vec3(),
-                        vertices[2].color.to_vec3(),
+                    let weights = Vec3A::new(weight_a, weight_b, weight_c);
+                    let color = Mat3A::from_cols(
+                        vertices[0].color.to_vec3().to_vec3a(),
+                        vertices[1].color.to_vec3().to_vec3a(),
+                        vertices[2].color.to_vec3().to_vec3a(),
                     ) * weights;
-                    let alpha = Vec3::new(
-                        vertices[0].color.alpha(),
-                        vertices[1].color.alpha(),
-                        vertices[2].color.alpha(),
-                    )
-                    .dot(weights);
+                    // Alpha doesn't need to be interpolated. It can be just one alpha value per
+                    // triangle
+                    // let alpha = Vec3A::new(
+                    //     vertices[0].color.alpha(),
+                    //     vertices[1].color.alpha(),
+                    //     vertices[2].color.alpha(),
+                    // )
+                    // .dot(weights);
+                    let color =
+                        [color.x, color.y, color.z, 1.0].map(|v| (v * u8::MAX as f32) as u8);
 
-                    self.draw_point(p.as_uvec2(), Color::srgba(color.x, color.y, color.z, alpha));
+                    self.draw_point(p.as_uvec2(), color);
                 }
             }
         }
