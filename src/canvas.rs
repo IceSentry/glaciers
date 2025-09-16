@@ -91,34 +91,31 @@ impl<'a> GlaciersCanvas<'a> {
             vertices,
             aabb: (min, max),
         } = triangle;
+        let a = vertices[0].pos.xy().as_ivec2();
+        let b = vertices[1].pos.xy().as_ivec2();
+        let c = vertices[2].pos.xy().as_ivec2();
+        let abc = edge_function(a, b, c);
+        if abc == 0 {
+            return;
+        };
 
         // Only check the pixels inside the AABB
         for y in min.y as i32..=max.y as i32 {
             for x in min.x as i32..=max.x as i32 {
-                let a = vertices[0].pos.xy().as_ivec2();
-                let b = vertices[1].pos.xy().as_ivec2();
-                let c = vertices[2].pos.xy().as_ivec2();
-
                 let p = IVec2::new(x, y);
 
                 let abp = edge_function(a, b, p);
                 let bcp = edge_function(b, c, p);
                 let cap = edge_function(c, a, p);
 
-                let abc = edge_function(a, b, c);
-
                 // Normally you only need to check one of these, but I don't know the winding order of
                 // the triangle
                 if (abp >= 0 && bcp >= 0 && cap >= 0) || (abp <= 0 && bcp <= 0 && cap <= 0) {
-                    let weight_a = bcp as f32 / abc as f32;
-                    let weight_b = cap as f32 / abc as f32;
-                    let weight_c = abp as f32 / abc as f32;
-
-                    let weights = Vec3A::new(weight_a, weight_b, weight_c);
-                    let color = Mat3A::from_cols(
-                        vertices[0].color.to_vec3().to_vec3a(),
-                        vertices[1].color.to_vec3().to_vec3a(),
-                        vertices[2].color.to_vec3().to_vec3a(),
+                    let weights = IVec3::new(bcp, cap, abp).as_vec3() / abc as f32;
+                    let color = Mat3::from_cols(
+                        vertices[0].color.to_vec3(),
+                        vertices[1].color.to_vec3(),
+                        vertices[2].color.to_vec3(),
                     ) * weights;
                     // Alpha doesn't need to be interpolated. It can be just one alpha value per
                     // triangle
