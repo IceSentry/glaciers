@@ -93,8 +93,8 @@ impl<'a> GlaciersCanvas<'a> {
         } = triangle;
 
         // Only check the pixels inside the AABB
-        for x in min.x as i32..=max.x as i32 {
-            for y in min.y as i32..=max.y as i32 {
+        for y in min.y as i32..=max.y as i32 {
+            for x in min.x as i32..=max.x as i32 {
                 let a = vertices[0].pos.xy().as_ivec2();
                 let b = vertices[1].pos.xy().as_ivec2();
                 let c = vertices[2].pos.xy().as_ivec2();
