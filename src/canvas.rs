@@ -25,13 +25,15 @@ impl<'a> GlaciersCanvas<'a> {
         }
     }
 
-    // #[inline]
     pub fn draw_point(&mut self, pos: UVec2, color: [u8; 4]) {
         let width = self.color.texture_descriptor.size.width;
         let pixel_offset = pos.y * width + pos.x;
         let offset = pixel_offset as usize * self.pixel_size;
 
         let data = self.color.data.as_mut().unwrap();
+        if offset + 3 > data.len() {
+            return;
+        }
 
         let [r, g, b, a] = color;
         data[offset + 0] = r;
@@ -40,7 +42,7 @@ impl<'a> GlaciersCanvas<'a> {
         data[offset + 3] = a;
     }
 
-    pub fn draw_line(&mut self, start: Vec3, end: Vec3, color: [u8; 4]) {
+    pub fn draw_line(&mut self, start: Vec3A, end: Vec3A, color: [u8; 4]) {
         let mut x0 = start.x as i32;
         let mut y0 = start.y as i32;
         let x1 = end.x as i32;
@@ -99,10 +101,10 @@ impl<'a> GlaciersCanvas<'a> {
             return;
         };
 
-        // Only check the pixels inside the AABB
-        for y in min.y as i32..=max.y as i32 {
-            for x in min.x as i32..=max.x as i32 {
-                let p = IVec2::new(x, y);
+        // I need to use a macro because the inline annotation is not aggressive enough
+        macro_rules! draw_point {
+            ($x: ident, $y: ident) => {
+                let p = IVec2::new($x, $y);
 
                 let abp = edge_function(a, b, p);
                 let bcp = edge_function(b, c, p);
@@ -111,24 +113,65 @@ impl<'a> GlaciersCanvas<'a> {
                 // Normally you only need to check one of these, but I don't know the winding order of
                 // the triangle
                 if (abp >= 0 && bcp >= 0 && cap >= 0) || (abp <= 0 && bcp <= 0 && cap <= 0) {
-                    let weights = IVec3::new(bcp, cap, abp).as_vec3() / abc as f32;
-                    let color = Mat3::from_cols(
-                        vertices[0].color.to_vec3(),
-                        vertices[1].color.to_vec3(),
-                        vertices[2].color.to_vec3(),
+                    let weights = IVec3::new(bcp, cap, abp).as_vec3a() / abc as f32;
+                    let color = Mat3A::from_cols(
+                        vertices[0].color,
+                        vertices[1].color,
+                        vertices[2].color
                     ) * weights;
-                    // Alpha doesn't need to be interpolated. It can be just one alpha value per
-                    // triangle
-                    // let alpha = Vec3A::new(
-                    //     vertices[0].color.alpha(),
-                    //     vertices[1].color.alpha(),
-                    //     vertices[2].color.alpha(),
-                    // )
-                    // .dot(weights);
-                    let color =
-                        [color.x, color.y, color.z, 1.0].map(|v| (v * u8::MAX as f32) as u8);
+                    let color = [color.x, color.y, color.z, 1.0].map(|v| (v * u8::MAX as f32) as u8);
 
                     self.draw_point(p.as_uvec2(), color);
+                }
+            };
+        }
+
+        // This should probably be relative to resolution scale
+        let block_size: i32 = 8;
+        let orient = (max.x - min.x) / (max.y - min.y);
+        if orient >= 0.4 && orient <= 1.6 {
+            for y in (min.y as i32..=max.y as i32).step_by(block_size as usize) {
+                let mut pass = false;
+                for x in (min.x as i32..=max.x as i32).step_by(block_size as usize) {
+                    let c00 = IVec2::new(x, y);
+                    let c01 = IVec2::new(x, y + block_size - 1);
+                    let c10 = IVec2::new(x + block_size - 1, y);
+                    let c11 = IVec2::new(x + block_size - 1, y + block_size - 1);
+
+                    let draw_corners = |canvas: &mut Self, color| {
+                        canvas.draw_line(c00.extend(0).as_vec3a(), c01.extend(0).as_vec3a(), color);
+                        canvas.draw_line(c01.extend(0).as_vec3a(), c11.extend(0).as_vec3a(), color);
+                        canvas.draw_line(c11.extend(0).as_vec3a(), c10.extend(0).as_vec3a(), color);
+                        canvas.draw_line(c10.extend(0).as_vec3a(), c00.extend(0).as_vec3a(), color);
+                    };
+
+                    let corners = [c00, c01, c10, c11].map(|p| {
+                        let abp = edge_function(a, b, p);
+                        let bcp = edge_function(b, c, p);
+                        let cap = edge_function(c, a, p);
+                        (abp >= 0 && bcp >= 0 && cap >= 0) || (abp <= 0 && bcp <= 0 && cap <= 0)
+                    });
+                    if corners.iter().any(|&c| c) {
+                        // at least one point is inside the triangle
+                        for y in c00.y as i32..=c11.y as i32 {
+                            for x in c00.x as i32..=c11.x as i32 {
+                                draw_point!(x, y);
+                            }
+                        }
+                        // draw_corners(self, [0, 0xff, 0, 0xff]);
+                        pass = true;
+                    } else {
+                        // draw_corners(self, [0xff, 0, 0, 0xff]);
+                        if pass {
+                            break;
+                        }
+                    }
+                }
+            }
+        } else {
+            for y in min.y as i32..=max.y as i32 {
+                for x in min.x as i32..=max.x as i32 {
+                    draw_point!(x, y);
                 }
             }
         }
@@ -137,15 +180,15 @@ impl<'a> GlaciersCanvas<'a> {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Vertex {
-    pub pos: Vec3,
-    pub color: LinearRgba,
+    pub pos: Vec3A,
+    pub color: Vec3A,
 }
 
 impl Vertex {
     pub fn new(pos: Vec3, color: Color) -> Self {
         Self {
-            pos: pos,
-            color: color.into(),
+            pos: pos.to_vec3a(),
+            color: color.to_linear().to_vec3().to_vec3a(),
         }
     }
 }
@@ -153,7 +196,7 @@ impl Vertex {
 #[derive(Component, Debug)]
 pub struct Triangle {
     pub vertices: [Vertex; 3],
-    pub aabb: (Vec3, Vec3),
+    pub aabb: (Vec3A, Vec3A),
 }
 
 impl Triangle {
