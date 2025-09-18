@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bevy::{
     asset::RenderAssetUsages, core_pipeline::tonemapping::Tonemapping, prelude::*,
@@ -32,6 +32,7 @@ fn setup(
 ) {
     let res = &window.single().unwrap().resolution;
     let scale = 1.0;
+
     let image_size = Vec2::new(res.width() * scale, res.height() * scale).as_uvec2();
     let image = Image::new_fill(
         Extent3d {
@@ -66,6 +67,7 @@ fn setup(
         fastrand::seed(i + seed);
 
         let random_color = Color::srgba(fastrand::f32(), fastrand::f32(), fastrand::f32(), 1.0);
+        // let random_color = Color::WHITE;
 
         let max_size = image_size.x / 6;
         let random_translation = Vec3::new(
@@ -110,7 +112,18 @@ fn draw(
     mut images: ResMut<Assets<Image>>,
     mut window: Query<&mut Window, With<PrimaryWindow>>,
     triangles: Query<&Triangle>,
+    time: Res<Time>,
+    mut timer: Local<Option<Timer>>,
 ) -> Result<()> {
+    // let timer = *timer;
+    match timer.as_mut() {
+        Some(timer) => {
+            timer.tick(time.delta());
+        }
+        None => {
+            *timer = Some(Timer::from_seconds(0.25, TimerMode::Repeating));
+        }
+    };
     let Ok(ctx) = ctx.single_mut() else {
         return Ok(());
     };
@@ -119,6 +132,7 @@ fn draw(
         return Ok(());
     };
 
+    // info!("start");
     let start = Instant::now();
 
     canvas.clear();
@@ -129,16 +143,19 @@ fn draw(
 
     let frame_time = start.elapsed().as_secs_f32() * 1000.0;
     let fps = 1000.0 / frame_time;
-
-    window.single_mut().unwrap().title = format!(
-        "Glaciers - {}x{} {:.2}ms {:.0}fps - {} triangles",
-        canvas.size().x,
-        canvas.size().y,
-        frame_time,
-        fps,
-        triangles.count()
-    );
-
+    if let Some(timer) = timer.as_ref()
+        && timer.just_finished()
+    {
+        window.single_mut().unwrap().title = format!(
+            "Glaciers - {}x{} {:.2}ms {:.0}fps - {} triangles",
+            canvas.size().x,
+            canvas.size().y,
+            frame_time,
+            fps,
+            triangles.count()
+        );
+    }
+    // info!("end");
     Ok(())
 }
 
