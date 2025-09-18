@@ -17,6 +17,8 @@ pub const RED: Srgba = Srgba::rgb(1.0, 0.0, 0.0);
 pub const GREEN: Srgba = Srgba::rgb(0.0, 1.0, 0.0);
 pub const BLUE: Srgba = Srgba::rgb(0.0, 0.0, 1.0);
 
+pub const USE_WIDE: bool = true;
+
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins, GlaciersPlugin))
@@ -138,7 +140,11 @@ fn draw(
     canvas.clear();
 
     for triangle in &triangles {
-        canvas.draw_triangle(triangle);
+        if USE_WIDE {
+            canvas.draw_triangle_wide(triangle);
+        } else {
+            canvas.draw_triangle(triangle);
+        }
     }
 
     let frame_time = start.elapsed().as_secs_f32() * 1000.0;

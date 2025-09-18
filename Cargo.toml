@@ -18,6 +18,8 @@ bevy = { version = "0.17.0-rc.1", default-features = false, features = [
 ] }
 wgpu = "26"
 
+glam_wide = { git = "https://github.com/Jondolf/glam_wide" }
+
 [dev-dependencies]
 # bevy = { version = "0.17.0-rc.1", default-features = false, features = [
 #     "bevy_render",

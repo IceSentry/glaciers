@@ -1,4 +1,7 @@
 use bevy::{image::TextureFormatPixelInfo, prelude::*};
+use glam_wide::{
+    CmpGe, CmpLe, Mat3x4, Vec2x4, Vec2x8, Vec3x4, Vec3x8, boolf32x4, boolf32x8, f32x4, f32x8,
+};
 
 pub struct GlaciersCanvas<'a> {
     pub(crate) color: &'a mut Image,
@@ -172,6 +175,80 @@ impl<'a> GlaciersCanvas<'a> {
             for y in min.y as i32..=max.y as i32 {
                 for x in min.x as i32..=max.x as i32 {
                     draw_point!(x, y);
+                }
+            }
+        }
+    }
+
+    pub fn draw_triangle_wide(&mut self, triangle: &Triangle) {
+        // returns double the signed area of the triangle
+        fn edge_function(a: IVec2, b: IVec2, c: IVec2) -> i32 {
+            (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+        }
+
+        fn edge_function_wide(a: Vec2x8, b: Vec2x8, c: Vec2x8) -> f32x8 {
+            (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+        }
+
+        let Triangle {
+            vertices,
+            aabb: (min, max),
+        } = triangle;
+        let a = vertices[0].pos.xy().as_ivec2();
+        let b = vertices[1].pos.xy().as_ivec2();
+        let c = vertices[2].pos.xy().as_ivec2();
+
+        let abc = edge_function(a, b, c);
+        if abc == 0 {
+            return;
+        };
+        let a_wide = Vec2x8::new_splat(a.x as f32, a.y as f32);
+        let b_wide = Vec2x8::new_splat(b.x as f32, b.y as f32);
+        let c_wide = Vec2x8::new_splat(c.x as f32, c.y as f32);
+        let abc_wide = edge_function_wide(a_wide, b_wide, c_wide);
+
+        let color_a = Vec3x8::splat(vertices[0].color.to_vec3());
+        let color_b = Vec3x8::splat(vertices[1].color.to_vec3());
+        let color_c = Vec3x8::splat(vertices[2].color.to_vec3());
+
+        const SIMD_SIZE: usize = 8;
+        for y in min.y as i32..=max.y as i32 {
+            for x in (min.x as i32..=max.x as i32).step_by(SIMD_SIZE) {
+                let mut x_wide = [0.0_f32; SIMD_SIZE];
+                let mut y_wide = [0.0_f32; SIMD_SIZE];
+                for i in 0..8 {
+                    x_wide[i] = x as f32 + i as f32;
+                    y_wide[i] = y as f32 + i as f32;
+                }
+                let p_wide = Vec2x8::new(f32x8::new(x_wide), f32x8::new(y_wide));
+                let p_x = p_wide.x.to_array();
+                let p_y = p_wide.y.to_array();
+
+                let abp = edge_function_wide(a_wide, b_wide, p_wide);
+                let bcp = edge_function_wide(b_wide, c_wide, p_wide);
+                let cap = edge_function_wide(c_wide, a_wide, p_wide);
+
+                let weights = Vec3x8::new(bcp, cap, abp) / abc_wide;
+                let r = (color_a.x * weights.x + color_b.x * weights.y + color_c.x * weights.z)
+                    .to_array();
+                let g = (color_a.y * weights.x + color_b.y * weights.y + color_c.y * weights.z)
+                    .to_array();
+                let b = (color_a.z * weights.x + color_b.z * weights.y + color_c.z * weights.z)
+                    .to_array();
+
+                let abp_ge = boolf32x8::from(abp.cmp_ge(0.0));
+                let bcp_ge = boolf32x8::from(bcp.cmp_ge(0.0));
+                let cap_ge = boolf32x8::from(cap.cmp_ge(0.0));
+                let check = (abp_ge & bcp_ge & cap_ge).to_array();
+
+                for i in 0..SIMD_SIZE {
+                    if check[i] {
+                        let p = Vec2::new(p_x[i], p_y[i]).as_uvec2();
+                        self.draw_point(
+                            p,
+                            [r[i], g[i], b[i], 1.0].map(|v| (v * u8::MAX as f32) as u8),
+                        );
+                    }
                 }
             }
         }
