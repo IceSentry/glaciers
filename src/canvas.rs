@@ -203,6 +203,7 @@ impl<'a> GlaciersCanvas<'a> {
             return;
         };
         let a_wide = Vec2x8::new_splat(a.x as f32, a.y as f32);
+        println!("a_wide: {:?}\na: {:?}", a_wide, a);
         let b_wide = Vec2x8::new_splat(b.x as f32, b.y as f32);
         let c_wide = Vec2x8::new_splat(c.x as f32, c.y as f32);
         let abc_wide = edge_function_wide(a_wide, b_wide, c_wide);
@@ -211,6 +212,7 @@ impl<'a> GlaciersCanvas<'a> {
         let color_b = Vec3x8::splat(vertices[1].color.to_vec3());
         let color_c = Vec3x8::splat(vertices[2].color.to_vec3());
 
+        println!("--- start ---");
         const SIMD_SIZE: usize = 8;
         for y in min.y as i32..=max.y as i32 {
             for x in (min.x as i32..=max.x as i32).step_by(SIMD_SIZE) {
@@ -240,6 +242,12 @@ impl<'a> GlaciersCanvas<'a> {
                 let bcp_ge = boolf32x8::from(bcp.cmp_ge(0.0));
                 let cap_ge = boolf32x8::from(cap.cmp_ge(0.0));
                 let check = (abp_ge & bcp_ge & cap_ge).to_array();
+                if y == 0 && x < 8 {
+                    println!("{:?}", a_wide);
+                    println!("{:?}", weights.to_array()[1]);
+                    println!("{:?}", r);
+                    println!("{:?}", check);
+                }
 
                 for i in 0..SIMD_SIZE {
                     if check[i] {

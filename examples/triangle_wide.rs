@@ -33,7 +33,7 @@ fn setup(
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
     let res = &window.single().unwrap().resolution;
-    let scale = 0.25;
+    let scale = 0.05;
 
     let image_size = Vec2::new(res.width() * scale, res.height() * scale).as_uvec2();
     let image = Image::new_fill(
@@ -70,16 +70,16 @@ fn setup(
     let tri = Triangle::new([
         Vertex::new(
             Vec3::new(
-                half_width - half_width / 2.0,
-                half_height - half_height / 2.0,
-                0.0,
+                // half_width - half_width / 2.0,
+                0.0, 0.0, 0.0,
             ),
             RED.into(),
         ),
         Vertex::new(
             Vec3::new(
                 half_width + half_width / 2.0,
-                half_height - half_height / 2.0,
+                // half_height - half_height / 2.0,
+                0.0,
                 0.0,
             ),
             GREEN.into(),
@@ -93,7 +93,6 @@ fn setup(
             BLUE.into(),
         ),
     ]);
-    println!("{:#?}", tri);
 
     // TODO rotate Transform
     commands.spawn((tri, Transform::default(), Rotates));
@@ -146,8 +145,8 @@ fn draw(
         let new_pos_c = transform.transform_point(triangle.vertices[2].pos.to_vec3());
         let tri = Triangle::new([
             Vertex::new(new_pos_a, RED.into()),
-            Vertex::new(new_pos_b, GREEN.into()),
-            Vertex::new(new_pos_c, BLUE.into()),
+            Vertex::new(new_pos_b, RED.into()),
+            Vertex::new(new_pos_c, RED.into()),
         ]);
         // let view_pos = match camera.world_to_viewport_with_depth(global_camera, pos) {
         //     Ok(view_pos) => view_pos,
