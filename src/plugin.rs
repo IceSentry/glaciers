@@ -1,6 +1,6 @@
 use bevy::{
     core_pipeline::core_3d::graph::{Core3d, Node3d},
-    ecs::query::QueryItem,
+    ecs::{entity::EntityHashMap, query::QueryItem},
     prelude::*,
     render::{
         Render, RenderApp,
@@ -15,7 +15,7 @@ use bevy::{
     },
     window::WindowResized,
 };
-use wgpu::{Extent3d, util::TextureBlitter};
+use wgpu::{Extent3d, TextureFormat, util::TextureBlitter};
 
 use crate::GlaciersContext;
 
@@ -32,6 +32,7 @@ impl Plugin for GlaciersPlugin {
         };
         // TODO consider using a custom graph on the camera
         render_app
+            .init_resource::<TextureBlitterCache>()
             .add_render_graph_node::<ViewNodeRunner<GlaciersNode>>(Core3d, GlaciersLabel)
             .add_render_graph_edges(
                 Core3d,
@@ -82,21 +83,22 @@ pub struct GlaciersLabel;
 #[derive(Default)]
 pub struct GlaciersNode;
 impl ViewNode for GlaciersNode {
-    type ViewQuery = (
-        &'static ViewTarget,
-        &'static GlaciersContext,
-        &'static GlaciersTextureBlitter,
-    );
+    type ViewQuery = (&'static ViewTarget, &'static GlaciersContext);
 
     fn run(
         &self,
         _graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
-        (view_target, glaciers_context, texture_blitter): QueryItem<Self::ViewQuery>,
+        (view_target, glaciers_context): QueryItem<Self::ViewQuery>,
         world: &World,
     ) -> Result<(), NodeRunError> {
         let gpu_images = world.resource::<RenderAssets<GpuImage>>();
         let Some(image) = gpu_images.get(&glaciers_context.image) else {
+            return Ok(());
+        };
+        let view_entity = _graph.view_entity();
+        let Some((_, texture_blitter)) = world.resource::<TextureBlitterCache>().get(&view_entity)
+        else {
             return Ok(());
         };
 
@@ -111,21 +113,25 @@ impl ViewNode for GlaciersNode {
     }
 }
 
-#[derive(Component, Deref)]
-pub struct GlaciersTextureBlitter(TextureBlitter);
+#[derive(Resource, Deref, DerefMut, Default)]
+pub struct TextureBlitterCache(EntityHashMap<(TextureFormat, TextureBlitter)>);
 
 fn prepare_texture_blitter(
-    mut commands: Commands,
     render_device: Res<RenderDevice>,
-    views: Query<(Entity, &ViewTarget)>,
+    views: Query<(Entity, &ViewTarget), Changed<ViewTarget>>,
+    mut blitter_cache: ResMut<TextureBlitterCache>,
 ) {
     for (e, view_target) in &views {
-        let texture_blitter = wgpu::util::TextureBlitter::new(
-            render_device.wgpu_device(),
-            view_target.main_texture_format(),
-        );
-        commands
-            .entity(e)
-            .insert(GlaciersTextureBlitter(texture_blitter));
+        // TODO make the format part of the key
+        let (format, _) = blitter_cache.entry(e).or_insert_with(|| {
+            let texture_blitter = wgpu::util::TextureBlitter::new(
+                render_device.wgpu_device(),
+                view_target.main_texture_format(),
+            );
+            (view_target.main_texture_format(), texture_blitter)
+        });
+        if *format != view_target.main_texture_format() {
+            unimplemented!("ViewTarget format changed");
+        }
     }
 }
