@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use bevy::{
     asset::RenderAssetUsages, core_pipeline::tonemapping::Tonemapping, prelude::*,
@@ -134,7 +134,7 @@ fn draw(
         return Ok(());
     };
 
-    // info!("start");
+    // info!("-- start --");
     let start = Instant::now();
 
     canvas.clear();
@@ -161,7 +161,7 @@ fn draw(
             triangles.count()
         );
     }
-    // info!("end");
+    // info!("-- end --");
     Ok(())
 }
 
