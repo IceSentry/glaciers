@@ -1,5 +1,5 @@
 use bevy::{image::TextureFormatPixelInfo, prelude::*};
-use glam_wide::{CmpGe, CmpLe, Vec2x8, Vec3x8, boolf32x8, f32x8};
+use glam_wide::{CmpGe, CmpLe, Vec2x4, Vec2x8, Vec3x8, boolf32x4, boolf32x8, f32x4, f32x8};
 
 pub struct GlaciersCanvas<'a> {
     pub(crate) color: &'a mut Image,
@@ -114,6 +114,9 @@ impl<'a> GlaciersCanvas<'a> {
         if abc == 0 {
             return;
         };
+        let color_a = vertices[0].color;
+        let color_b = vertices[1].color;
+        let color_c = vertices[2].color;
 
         // I need to use a macro because the inline annotation is not aggressive enough
         macro_rules! draw_point {
@@ -131,13 +134,10 @@ impl<'a> GlaciersCanvas<'a> {
                 // the triangle
                 if abp <= 0 && bcp <= 0 && cap <= 0 {
                     let weights = IVec3::new(bcp, cap, abp).as_vec3a() / abc as f32;
-                    let color = Mat3::from_cols(
-                        vertices[0].color,
-                        vertices[1].color,
-                        vertices[2].color
-                    ) * weights;
-                    let color = [color.x, color.y, color.z, 1.0].map(|v| (v * u8::MAX as f32) as u8);
-
+                    let r = color_a.x * weights.x + color_b.x * weights.y + color_c.x * weights.z;
+                    let g = color_a.y * weights.x + color_b.y * weights.y + color_c.y * weights.z;
+                    let b = color_a.z * weights.x + color_b.z * weights.y + color_c.z * weights.z;
+                    let color = [r, g, b, 1.0].map(|v| (v * u8::MAX as f32) as u8);
                     self.draw_point(p.as_uvec2(), color);
                 }
             };
@@ -148,6 +148,7 @@ impl<'a> GlaciersCanvas<'a> {
         // This should probably be relative to resolution scale
         let block_size: i32 = 8;
         let orient = (max.x - min.x) / (max.y - min.y);
+        // let orient = 0.0;
         if orient >= 0.4 && orient <= 1.6 {
             for y in (min.y as i32..=max.y as i32).step_by(block_size as usize) {
                 let mut pass = false;
@@ -157,11 +158,11 @@ impl<'a> GlaciersCanvas<'a> {
                     let c10 = IVec2::new(x + block_size - 1, y);
                     let c11 = IVec2::new(x + block_size - 1, y + block_size - 1);
 
-                    let _draw_corners = |canvas: &mut Self, color| {
-                        canvas.draw_line(c00.extend(0).as_vec3(), c01.extend(0).as_vec3(), color);
-                        canvas.draw_line(c01.extend(0).as_vec3(), c11.extend(0).as_vec3(), color);
-                        canvas.draw_line(c11.extend(0).as_vec3(), c10.extend(0).as_vec3(), color);
-                        canvas.draw_line(c10.extend(0).as_vec3(), c00.extend(0).as_vec3(), color);
+                    let draw_corners = |canvas: &mut Self, color| {
+                        // canvas.draw_line(c00.extend(0).as_vec3(), c01.extend(0).as_vec3(), color);
+                        // canvas.draw_line(c01.extend(0).as_vec3(), c11.extend(0).as_vec3(), color);
+                        // canvas.draw_line(c11.extend(0).as_vec3(), c10.extend(0).as_vec3(), color);
+                        // canvas.draw_line(c10.extend(0).as_vec3(), c00.extend(0).as_vec3(), color);
                     };
 
                     let corners = [c00, c01, c10, c11].map(|p| {
@@ -177,10 +178,10 @@ impl<'a> GlaciersCanvas<'a> {
                                 draw_point!(x, y);
                             }
                         }
-                        // draw_corners(self, [0, 0xff, 0, 0xff]);
+                        draw_corners(self, [0, 0xff, 0, 0xff]);
                         pass = true;
                     } else {
-                        // draw_corners(self, [0xff, 0, 0, 0xff]);
+                        draw_corners(self, [0xff, 0, 0, 0xff]);
                         if pass {
                             break;
                         }
@@ -202,6 +203,10 @@ impl<'a> GlaciersCanvas<'a> {
             (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
         }
 
+        fn edge_function_wide_4(a: Vec2x4, b: Vec2x4, c: Vec2x4) -> f32x4 {
+            (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+        }
+
         fn edge_function_wide(a: Vec2x8, b: Vec2x8, c: Vec2x8) -> f32x8 {
             (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
         }
@@ -219,61 +224,153 @@ impl<'a> GlaciersCanvas<'a> {
             return;
         };
 
-        let a = Vec2x8::new_splat(a.x as f32, a.y as f32);
-        let b = Vec2x8::new_splat(b.x as f32, b.y as f32);
-        let c = Vec2x8::new_splat(c.x as f32, c.y as f32);
-        let abc = edge_function_wide(a, b, c);
+        let a_wide = Vec2x8::new_splat(a.x as f32, a.y as f32);
+        let b_wide = Vec2x8::new_splat(b.x as f32, b.y as f32);
+        let c_wide = Vec2x8::new_splat(c.x as f32, c.y as f32);
+        let abc = edge_function_wide(a_wide, b_wide, c_wide);
+        let a_wide_4 = Vec2x4::new_splat(a.x as f32, a.y as f32);
+        let b_wide_4 = Vec2x4::new_splat(b.x as f32, b.y as f32);
+        let c_wide_4 = Vec2x4::new_splat(c.x as f32, c.y as f32);
 
         let color_a = Vec3x8::splat(vertices[0].color);
         let color_b = Vec3x8::splat(vertices[1].color);
         let color_c = Vec3x8::splat(vertices[2].color);
 
         const SIMD_SIZE: usize = 8;
-        for y in min.y as i32..=max.y as i32 {
-            for x in (min.x as i32..=max.x as i32).step_by(SIMD_SIZE) {
-                let mut x_wide = [0.0_f32; SIMD_SIZE];
-                for i in 0..SIMD_SIZE {
-                    x_wide[i] = x as f32 + i as f32;
-                }
-                let p_wide = Vec2x8::new(f32x8::new(x_wide), f32x8::splat(y as f32));
+        let block_size = 8;
+        for y in (min.y as i32..=max.y as i32).step_by(block_size as usize) {
+            let mut pass = false;
+            for x in (min.x as i32..=max.x as i32).step_by(block_size as usize) {
+                let c00 = IVec2::new(x, y).as_vec2();
+                let c01 = IVec2::new(x, y + block_size - 1).as_vec2();
+                let c10 = IVec2::new(x + block_size - 1, y).as_vec2();
+                let c11 = IVec2::new(x + block_size - 1, y + block_size - 1).as_vec2();
+                let draw_corners = |canvas: &mut Self, color| {
+                    canvas.draw_line(c00.extend(0.0), c01.extend(0.0), color);
+                    canvas.draw_line(c01.extend(0.0), c11.extend(0.0), color);
+                    canvas.draw_line(c11.extend(0.0), c10.extend(0.0), color);
+                    canvas.draw_line(c10.extend(0.0), c00.extend(0.0), color);
+                };
 
-                let abp = edge_function_wide(a, b, p_wide);
-                let bcp = edge_function_wide(b, c, p_wide);
-                let cap = edge_function_wide(c, a, p_wide);
+                let corners_wide: Vec2x4 = [c00, c01, c10, c11].into();
+                let abp = edge_function_wide_4(a_wide_4, b_wide_4, corners_wide);
+                let bcp = edge_function_wide_4(b_wide_4, c_wide_4, corners_wide);
+                let cap = edge_function_wide_4(c_wide_4, a_wide_4, corners_wide);
+                let abp_cmp = boolf32x4::from(abp.cmp_le(0.0));
+                let bcp_cmp = boolf32x4::from(bcp.cmp_le(0.0));
+                let cap_cmp = boolf32x4::from(cap.cmp_le(0.0));
+                let check = (abp_cmp & bcp_cmp & cap_cmp).to_array();
 
-                let weights = Vec3x8::new(bcp, cap, abp) / abc;
-                let r = color_a.x * weights.x + color_b.x * weights.y + color_c.x * weights.z;
-                let g = color_a.y * weights.x + color_b.y * weights.y + color_c.y * weights.z;
-                let b = color_a.z * weights.x + color_b.z * weights.y + color_c.z * weights.z;
+                if check.iter().any(|v| *v) {
+                    println!("{:?}", check);
+                    // at least one point is inside the triangle
+                    for y in c00.y as i32..=c11.y as i32 {
+                        for x in c00.x as i32..=c11.x as i32 {
+                            let mut x_wide = [0.0_f32; SIMD_SIZE];
+                            for i in 0..SIMD_SIZE {
+                                x_wide[i] = x as f32 + i as f32;
+                            }
+                            let p_wide = Vec2x8::new(f32x8::new(x_wide), f32x8::splat(y as f32));
 
-                // Assumes winding order is CCW
-                // TODO need to make winding order configurable
-                let abp_cmp = boolf32x8::from(abp.cmp_le(0.0));
-                let bcp_cmp = boolf32x8::from(bcp.cmp_le(0.0));
-                let cap_cmp = boolf32x8::from(cap.cmp_le(0.0));
-                let check = abp_cmp & bcp_cmp & cap_cmp;
+                            let abp = edge_function_wide(a_wide, b_wide, p_wide);
+                            let bcp = edge_function_wide(b_wide, c_wide, p_wide);
+                            let cap = edge_function_wide(c_wide, a_wide, p_wide);
 
-                if !check.any() {
-                    // All lanes are false which means there's nothing to draw
-                    continue;
-                }
+                            let weights = Vec3x8::new(bcp, cap, abp) / abc;
+                            let r = color_a.x * weights.x
+                                + color_b.x * weights.y
+                                + color_c.x * weights.z;
+                            let g = color_a.y * weights.x
+                                + color_b.y * weights.y
+                                + color_c.y * weights.z;
+                            let b = color_a.z * weights.x
+                                + color_b.z * weights.y
+                                + color_c.z * weights.z;
 
-                // Unwiden stuff and draw the points
-                let color: [Vec3; SIMD_SIZE] = Vec3x8::new(r, g, b).into();
-                let ps: [Vec2; SIMD_SIZE] = p_wide.into();
-                let check = check.to_array();
+                            // Assumes winding order is CCW
+                            // TODO need to make winding order configurable
+                            let abp_cmp = boolf32x8::from(abp.cmp_le(0.0));
+                            let bcp_cmp = boolf32x8::from(bcp.cmp_le(0.0));
+                            let cap_cmp = boolf32x8::from(cap.cmp_le(0.0));
+                            let check = abp_cmp & bcp_cmp & cap_cmp;
 
-                for i in 0..SIMD_SIZE {
-                    if check[i] {
-                        self.draw_point(
-                            ps[i].as_uvec2(),
-                            [color[i].x, color[i].y, color[i].z, 1.0]
-                                .map(|v| (v * u8::MAX as f32) as u8),
-                        );
+                            if !check.any() {
+                                // All lanes are false which means there's nothing to draw
+                                continue;
+                            }
+
+                            // Unwiden stuff and draw the points
+                            let color: [Vec3; SIMD_SIZE] = Vec3x8::new(r, g, b).into();
+                            let ps: [Vec2; SIMD_SIZE] = p_wide.into();
+                            let check = check.to_array();
+
+                            for i in 0..SIMD_SIZE {
+                                if check[i] {
+                                    self.draw_point(
+                                        ps[i].as_uvec2(),
+                                        [color[i].x, color[i].y, color[i].z, 1.0]
+                                            .map(|v| (v * u8::MAX as f32) as u8),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    draw_corners(self, [0, 0xff, 0, 0xff]);
+                    pass = true;
+                } else {
+                    draw_corners(self, [0, 0xff, 0, 0xff]);
+                    if pass {
+                        break;
                     }
                 }
             }
         }
+
+        // for y in min.y as i32..=max.y as i32 {
+        //     for x in (min.x as i32..=max.x as i32).step_by(SIMD_SIZE) {
+        //         let mut x_wide = [0.0_f32; SIMD_SIZE];
+        //         for i in 0..SIMD_SIZE {
+        //             x_wide[i] = x as f32 + i as f32;
+        //         }
+        //         let p_wide = Vec2x8::new(f32x8::new(x_wide), f32x8::splat(y as f32));
+        //
+        //         let abp = edge_function_wide(a_wide, b_wide, p_wide);
+        //         let bcp = edge_function_wide(b_wide, c_wide, p_wide);
+        //         let cap = edge_function_wide(c_wide, a_wide, p_wide);
+        //
+        //         let weights = Vec3x8::new(bcp, cap, abp) / abc;
+        //         let r = color_a.x * weights.x + color_b.x * weights.y + color_c.x * weights.z;
+        //         let g = color_a.y * weights.x + color_b.y * weights.y + color_c.y * weights.z;
+        //         let b = color_a.z * weights.x + color_b.z * weights.y + color_c.z * weights.z;
+        //
+        //         // Assumes winding order is CCW
+        //         // TODO need to make winding order configurable
+        //         let abp_cmp = boolf32x8::from(abp.cmp_le(0.0));
+        //         let bcp_cmp = boolf32x8::from(bcp.cmp_le(0.0));
+        //         let cap_cmp = boolf32x8::from(cap.cmp_le(0.0));
+        //         let check = abp_cmp & bcp_cmp & cap_cmp;
+        //
+        //         if !check.any() {
+        //             // All lanes are false which means there's nothing to draw
+        //             continue;
+        //         }
+        //
+        //         // Unwiden stuff and draw the points
+        //         let color: [Vec3; SIMD_SIZE] = Vec3x8::new(r, g, b).into();
+        //         let ps: [Vec2; SIMD_SIZE] = p_wide.into();
+        //         let check = check.to_array();
+        //
+        //         for i in 0..SIMD_SIZE {
+        //             if check[i] {
+        //                 self.draw_point(
+        //                     ps[i].as_uvec2(),
+        //                     [color[i].x, color[i].y, color[i].z, 1.0]
+        //                         .map(|v| (v * u8::MAX as f32) as u8),
+        //                 );
+        //             }
+        //         }
+        //     }
+        // }
     }
 }
 

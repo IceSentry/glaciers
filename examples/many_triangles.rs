@@ -29,7 +29,7 @@ fn setup(
     mut glaciers_params: GlaciersParams,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
-    let scale = 1.0;
+    let scale = 0.1;
     let res = window.single().unwrap().resolution.clone();
     let glaciers_context = glaciers_params.init_context(res, scale);
     let image_size = glaciers_context.image_size;
@@ -47,7 +47,7 @@ fn setup(
     ));
     fastrand::seed(42);
     let seed = fastrand::u64(..);
-    for i in 0..1000 {
+    for i in 0..5 {
         fastrand::seed(i + seed);
 
         let random_color = Color::srgba(fastrand::f32(), fastrand::f32(), fastrand::f32(), 1.0);
