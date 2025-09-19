@@ -49,26 +49,40 @@ impl<'a> GlaciersCanvas<'a> {
         let x1 = end.x as i32;
         let y1 = end.y as i32;
 
-        let dx = (x1 - x0).abs();
-        let sx = if x0 < x1 { 1 } else { -1 };
-        let dy = -(y1 - y0).abs();
-        let sy = if y0 < y1 { 1 } else { -1 };
-        let mut err = dx + dy;
-
-        loop {
-            self.draw_point(UVec2::new(x0 as u32, y0 as u32), color);
-
-            if x0 == x1 && y0 == y1 {
-                break;
+        if x0 == x1 {
+            let sy = if y0 < y1 { 1 } else { -1 };
+            while y0 < y1 {
+                self.draw_point(UVec2::new(x0 as u32, y0 as u32), color);
+                y0 += sy;
             }
-            let e2 = 2 * err;
-            if e2 >= dy {
-                err += dy;
+        } else if y0 == y1 {
+            let sx = if x0 < x1 { 1 } else { -1 };
+            while x0 < x1 {
+                self.draw_point(UVec2::new(x0 as u32, y0 as u32), color);
                 x0 += sx;
             }
-            if e2 <= dx {
-                err += dx;
-                y0 += sy;
+        } else {
+            let dx = (x1 - x0).abs();
+            let sx = if x0 < x1 { 1 } else { -1 };
+            let dy = -(y1 - y0).abs();
+            let sy = if y0 < y1 { 1 } else { -1 };
+            let mut err = dx + dy;
+
+            loop {
+                self.draw_point(UVec2::new(x0 as u32, y0 as u32), color);
+
+                if x0 == x1 && y0 == y1 {
+                    break;
+                }
+                let e2 = 2 * err;
+                if e2 >= dy {
+                    err += dy;
+                    x0 += sx;
+                }
+                if e2 <= dx {
+                    err += dx;
+                    y0 += sy;
+                }
             }
         }
     }
@@ -83,7 +97,6 @@ impl<'a> GlaciersCanvas<'a> {
         self.draw_line(vertices[2].pos, vertices[0].pos, color);
     }
 
-    // TODO benchmark and optimize
     pub fn draw_triangle(&mut self, triangle: &Triangle) {
         // returns double the signed area of the triangle
         fn edge_function(a: IVec2, b: IVec2, c: IVec2) -> i32 {
