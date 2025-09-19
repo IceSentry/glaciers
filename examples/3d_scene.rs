@@ -1,16 +1,11 @@
 use std::time::Instant;
 
 use bevy::{
-    asset::RenderAssetUsages,
-    color::palettes::css::MAGENTA,
-    core_pipeline::tonemapping::Tonemapping,
-    mesh::PlaneMeshBuilder,
-    prelude::*,
-    render::render_resource::*,
-    window::{PrimaryWindow, WindowResized},
+    color::palettes::css::MAGENTA, core_pipeline::tonemapping::Tonemapping, mesh::PlaneMeshBuilder,
+    prelude::*, window::PrimaryWindow,
 };
 use glaciers::{
-    GlaciersContext,
+    GlaciersParams,
     canvas::{Triangle, Vertex},
     plugin::GlaciersPlugin,
 };
@@ -32,23 +27,13 @@ fn main() {
 
 fn setup(
     mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    mut meshes: ResMut<Assets<Mesh>>,
+    mut glaciers_params: GlaciersParams,
     window: Query<&Window, With<PrimaryWindow>>,
+    mut meshes: ResMut<Assets<Mesh>>,
 ) {
-    let res = &window.single().unwrap().resolution;
     let scale = 1.0;
-    let image = Image::new_fill(
-        Extent3d {
-            width: (res.width() * scale) as u32,
-            height: (res.height() * scale) as u32,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        &[0u8; 4],
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::all(),
-    );
+    let res = window.single().unwrap().resolution.clone();
+    let glaciers_context = glaciers_params.init_context(res, scale);
 
     // camera
     commands.spawn((
@@ -59,11 +44,7 @@ fn setup(
             ..default()
         },
         Tonemapping::None,
-        GlaciersContext {
-            image: images.add(image),
-            scale,
-            ..default()
-        },
+        glaciers_context,
     ));
 
     commands.spawn((
@@ -125,20 +106,15 @@ fn handle_input(
 }
 
 fn draw(
-    mut ctx: Query<&GlaciersContext>,
-    mut images: ResMut<Assets<Image>>,
+    mut glaciers_params: GlaciersParams,
     mut window: Query<&mut Window, With<PrimaryWindow>>,
     meshes: Query<(&Mesh3d, &GlobalTransform)>,
     meshes_assets: Res<Assets<Mesh>>,
     views: Query<(&Camera, &GlobalTransform)>,
 ) -> Result<()> {
-    let Ok(ctx) = ctx.single_mut() else {
-        return Ok(());
-    };
-    let mut canvas = ctx.get_canvas(&mut images);
-    let Some(canvas) = canvas.as_mut() else {
-        return Ok(());
-    };
+    let scale = glaciers_params.context().scale;
+    let mut canvas = glaciers_params.canvas();
+
     let Ok((camera, global_camera)) = views.single() else {
         return Ok(());
     };
@@ -183,7 +159,7 @@ fn draw(
                             continue 'outer;
                         }
                     };
-                    let view_pos = view_pos * ctx.scale;
+                    let view_pos = view_pos * scale;
                     if view_pos.y < 0.0
                         || view_pos.y > canvas.size_f32().y
                         || view_pos.x < 0.0
@@ -194,7 +170,7 @@ fn draw(
                     vertices[i] = Vertex::new(view_pos, color);
                 }
                 let triangle = Triangle::new(vertices);
-                canvas.draw_triangle(&triangle);
+                canvas.draw_triangle_wide(&triangle);
                 canvas.draw_triangle_wireframe(&triangle, BLACK.to_u8_array());
 
                 primitive_id += 1;

@@ -1,5 +1,5 @@
 use bevy::{image::TextureFormatPixelInfo, prelude::*};
-use glam_wide::{CmpGe, Vec2x8, Vec3x8, boolf32x8, f32x8};
+use glam_wide::{CmpGe, CmpLe, Vec2x8, Vec3x8, boolf32x8, f32x8};
 
 pub struct GlaciersCanvas<'a> {
     pub(crate) color: &'a mut Image,
@@ -129,7 +129,7 @@ impl<'a> GlaciersCanvas<'a> {
 
                 // Normally you only need to check one of these, but I don't know the winding order of
                 // the triangle
-                if abp >= 0 && bcp >= 0 && cap >= 0 {
+                if abp <= 0 && bcp <= 0 && cap <= 0 {
                     let weights = IVec3::new(bcp, cap, abp).as_vec3a() / abc as f32;
                     let color = Mat3::from_cols(
                         vertices[0].color,
@@ -143,7 +143,7 @@ impl<'a> GlaciersCanvas<'a> {
             };
         }
 
-        println!("--- start ---");
+        // println!("--- start ---");
 
         // This should probably be relative to resolution scale
         let block_size: i32 = 8;
@@ -168,7 +168,7 @@ impl<'a> GlaciersCanvas<'a> {
                         let abp = edge_function(a, b, p);
                         let bcp = edge_function(b, c, p);
                         let cap = edge_function(c, a, p);
-                        abp >= 0 && bcp >= 0 && cap >= 0
+                        abp <= 0 && bcp <= 0 && cap <= 0
                     });
                     if corners.iter().any(|&c| c) {
                         // at least one point is inside the triangle
@@ -246,10 +246,12 @@ impl<'a> GlaciersCanvas<'a> {
                 let g = color_a.y * weights.x + color_b.y * weights.y + color_c.y * weights.z;
                 let b = color_a.z * weights.x + color_b.z * weights.y + color_c.z * weights.z;
 
-                let abp_ge = boolf32x8::from(abp.cmp_ge(0.0));
-                let bcp_ge = boolf32x8::from(bcp.cmp_ge(0.0));
-                let cap_ge = boolf32x8::from(cap.cmp_ge(0.0));
-                let check = abp_ge & bcp_ge & cap_ge;
+                // Assumes winding order is CCW
+                // TODO need to make winding order configurable
+                let abp_cmp = boolf32x8::from(abp.cmp_le(0.0));
+                let bcp_cmp = boolf32x8::from(bcp.cmp_le(0.0));
+                let cap_cmp = boolf32x8::from(cap.cmp_le(0.0));
+                let check = abp_cmp & bcp_cmp & cap_cmp;
 
                 if !check.any() {
                     // All lanes are false which means there's nothing to draw

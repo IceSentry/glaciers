@@ -1,11 +1,8 @@
 use std::time::Instant;
 
-use bevy::{
-    asset::RenderAssetUsages, core_pipeline::tonemapping::Tonemapping, prelude::*,
-    render::render_resource::*, window::PrimaryWindow,
-};
+use bevy::{core_pipeline::tonemapping::Tonemapping, prelude::*, window::PrimaryWindow};
 use glaciers::{
-    GlaciersContext,
+    GlaciersParams,
     canvas::{Triangle, Vertex},
     plugin::GlaciersPlugin,
 };
@@ -29,24 +26,13 @@ fn main() {
 
 fn setup(
     mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
+    mut glaciers_params: GlaciersParams,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
-    let res = &window.single().unwrap().resolution;
     let scale = 1.0;
-
-    let image_size = Vec2::new(res.width() * scale, res.height() * scale).as_uvec2();
-    let image = Image::new_fill(
-        Extent3d {
-            width: image_size.x,
-            height: image_size.y,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        &[0u8; 4],
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::all(),
-    );
+    let res = window.single().unwrap().resolution.clone();
+    let glaciers_context = glaciers_params.init_context(res, scale);
+    let image_size = glaciers_context.image_size;
 
     // camera
     commands.spawn((
@@ -57,11 +43,7 @@ fn setup(
             ..default()
         },
         Tonemapping::None,
-        GlaciersContext {
-            image: images.add(image),
-            scale,
-            ..default()
-        },
+        glaciers_context,
     ));
     fastrand::seed(42);
     let seed = fastrand::u64(..);
@@ -110,8 +92,7 @@ fn handle_input(keyboard: Res<ButtonInput<KeyCode>>) {
 }
 
 fn draw(
-    mut ctx: Query<&GlaciersContext>,
-    mut images: ResMut<Assets<Image>>,
+    mut glaciers_params: GlaciersParams,
     mut window: Query<&mut Window, With<PrimaryWindow>>,
     triangles: Query<&Triangle>,
     time: Res<Time>,
@@ -126,13 +107,8 @@ fn draw(
             *timer = Some(Timer::from_seconds(0.25, TimerMode::Repeating));
         }
     };
-    let Ok(ctx) = ctx.single_mut() else {
-        return Ok(());
-    };
-    let mut canvas = ctx.get_canvas(&mut images);
-    let Some(canvas) = canvas.as_mut() else {
-        return Ok(());
-    };
+
+    let mut canvas = glaciers_params.canvas();
 
     // info!("-- start --");
     let start = Instant::now();

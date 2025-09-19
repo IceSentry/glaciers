@@ -5,7 +5,7 @@ use bevy::{
     render::render_resource::*, window::PrimaryWindow,
 };
 use glaciers::{
-    GlaciersContext,
+    GlaciersContext, GlaciersParams,
     canvas::{Triangle, Vertex},
     plugin::GlaciersPlugin,
 };
@@ -73,8 +73,7 @@ fn handle_input(keyboard: Res<ButtonInput<KeyCode>>) {
 }
 
 fn draw(
-    mut ctx: Query<&GlaciersContext>,
-    mut images: ResMut<Assets<Image>>,
+    mut glaciers_params: GlaciersParams,
     mut window: Query<&mut Window, With<PrimaryWindow>>,
     triangles: Query<(&Triangle, &GlobalTransform)>,
     time: Res<Time>,
@@ -89,13 +88,7 @@ fn draw(
             *timer = Some(Timer::from_seconds(0.25, TimerMode::Repeating));
         }
     };
-    let Ok(ctx) = ctx.single_mut() else {
-        return Ok(());
-    };
-    let mut canvas = ctx.get_canvas(&mut images);
-    let Some(canvas) = canvas.as_mut() else {
-        return Ok(());
-    };
+    let mut canvas = glaciers_params.canvas();
 
     // info!("start");
     let start = Instant::now();
