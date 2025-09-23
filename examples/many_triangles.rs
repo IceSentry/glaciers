@@ -15,6 +15,7 @@ pub const GREEN: Srgba = Srgba::rgb(0.0, 1.0, 0.0);
 pub const BLUE: Srgba = Srgba::rgb(0.0, 0.0, 1.0);
 
 pub const USE_WIDE: bool = true;
+pub const USE_BOX: bool = true;
 
 fn main() {
     App::new()
@@ -117,7 +118,11 @@ fn draw(
 
     for triangle in &triangles {
         if USE_WIDE {
-            canvas.draw_triangle_wide(triangle);
+            if USE_BOX {
+                canvas.draw_triangle_wide_box(triangle);
+            } else {
+                canvas.draw_triangle_wide(triangle);
+            }
         } else {
             canvas.draw_triangle(triangle);
         }

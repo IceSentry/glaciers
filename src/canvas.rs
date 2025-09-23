@@ -52,23 +52,23 @@ impl<'a> GlaciersCanvas<'a> {
         let dx = (x1 - x0).abs();
         let sx = if x0 < x1 { 1 } else { -1 };
         let dy = -(y1 - y0).abs();
-            let sy = if y0 < y1 { 1 } else { -1 };
-            let mut err = dx + dy;
+        let sy = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx + dy;
 
-            loop {
-                self.draw_point(UVec2::new(x0 as u32, y0 as u32), color);
+        loop {
+            self.draw_point(UVec2::new(x0 as u32, y0 as u32), color);
 
-                if x0 == x1 && y0 == y1 {
-                    break;
-                }
-                let e2 = 2 * err;
-                if e2 >= dy {
-                    err += dy;
-                    x0 += sx;
-                }
-                if e2 <= dx {
-                    err += dx;
-                    y0 += sy;
+            if x0 == x1 && y0 == y1 {
+                break;
+            }
+            let e2 = 2 * err;
+            if e2 >= dy {
+                err += dy;
+                x0 += sx;
+            }
+            if e2 <= dx {
+                err += dx;
+                y0 += sy;
             }
         }
     }
@@ -258,6 +258,117 @@ impl<'a> GlaciersCanvas<'a> {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    pub fn draw_triangle_wide_box(&mut self, triangle: &Triangle) {
+        const SIMD_SIZE: usize = 8;
+
+        // returns double the signed area of the triangle
+        fn edge_function(a: Vec2, b: Vec2, c: Vec2) -> f32 {
+            (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+        }
+
+        fn edge_function_wide(a: Vec2x8, b: Vec2x8, c: Vec2x8) -> f32x8 {
+            (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+        }
+
+        let Triangle {
+            vertices,
+            aabb: (min, max),
+        } = triangle;
+        let a = vertices[0].pos.xy();
+        let b = vertices[1].pos.xy();
+        let c = vertices[2].pos.xy();
+
+        let abc = edge_function(a, b, c);
+        if abc == 0.0 {
+            return;
+        };
+
+        let a = Vec2x8::new_splat(a.x as f32, a.y as f32);
+        let b = Vec2x8::new_splat(b.x as f32, b.y as f32);
+        let c = Vec2x8::new_splat(c.x as f32, c.y as f32);
+        let abc = edge_function_wide(a, b, c);
+
+        let color_a = Vec3x8::splat(vertices[0].color);
+        let color_b = Vec3x8::splat(vertices[1].color);
+        let color_c = Vec3x8::splat(vertices[2].color);
+
+        let block_size: i32 = 8;
+        for y in (min.y as i32..=max.y as i32).step_by(block_size as usize) {
+            let mut first_drawn = false;
+            let mut has_drawn = false;
+            for x in (min.x as i32..=max.x as i32).step_by(block_size as usize) {
+                let c00 = IVec2::new(x, y);
+                let c01 = IVec2::new(x, y + block_size - 1);
+                let c10 = IVec2::new(x + block_size - 1, y);
+                let c11 = IVec2::new(x + block_size - 1, y + block_size - 1);
+
+                let _draw_corners = |canvas: &mut Self, color| {
+                    canvas.draw_line(c00.extend(0).as_vec3(), c01.extend(0).as_vec3(), color);
+                    canvas.draw_line(c01.extend(0).as_vec3(), c11.extend(0).as_vec3(), color);
+                    canvas.draw_line(c11.extend(0).as_vec3(), c10.extend(0).as_vec3(), color);
+                    canvas.draw_line(c10.extend(0).as_vec3(), c00.extend(0).as_vec3(), color);
+                };
+
+                for y in c00.y as i32..=c11.y as i32 {
+                    let mut x_wide = [0.0_f32; SIMD_SIZE];
+                    for i in 0..SIMD_SIZE {
+                        x_wide[i] = x as f32 + i as f32;
+                    }
+                    let p_wide = Vec2x8::new(f32x8::new(x_wide), f32x8::splat(y as f32));
+
+                    let abp = edge_function_wide(a, b, p_wide);
+                    let bcp = edge_function_wide(b, c, p_wide);
+                    let cap = edge_function_wide(c, a, p_wide);
+
+                    let weights = Vec3x8::new(bcp, cap, abp) / abc;
+                    let r = color_a.x * weights.x + color_b.x * weights.y + color_c.x * weights.z;
+                    let g = color_a.y * weights.x + color_b.y * weights.y + color_c.y * weights.z;
+                    let b = color_a.z * weights.x + color_b.z * weights.y + color_c.z * weights.z;
+
+                    // Assumes winding order is CCW
+                    // TODO need to make winding order configurable
+                    let abp_cmp = boolf32x8::from(abp.cmp_le(0.0));
+                    let bcp_cmp = boolf32x8::from(bcp.cmp_le(0.0));
+                    let cap_cmp = boolf32x8::from(cap.cmp_le(0.0));
+                    let check = abp_cmp & bcp_cmp & cap_cmp;
+
+                    if !check.any() {
+                        // All lanes are false which means there's nothing to draw
+                        continue;
+                    }
+
+                    // Unwiden stuff and draw the points
+                    let color: [Vec3; SIMD_SIZE] = Vec3x8::new(r, g, b).into();
+                    let ps: [Vec2; SIMD_SIZE] = p_wide.into();
+                    let check = check.to_array();
+
+                    for i in 0..SIMD_SIZE {
+                        if check[i] {
+                            has_drawn = true;
+                            self.draw_point(
+                                ps[i].as_uvec2(),
+                                [color[i].x, color[i].y, color[i].z, 1.0]
+                                    .map(|v| (v * u8::MAX as f32) as u8),
+                            );
+                        }
+                    }
+                }
+                if has_drawn {
+                    // draw_corners(self, [0, 0xff, 0, 0xff]);
+                    if !first_drawn {
+                        first_drawn = true;
+                    }
+                } else {
+                    // draw_corners(self, [0xff, 0, 0, 0xff]);
+                }
+                if first_drawn && !has_drawn {
+                    break;
+                }
+                has_drawn = false;
             }
         }
     }
