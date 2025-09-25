@@ -4,25 +4,33 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.17.0-rc.1", default-features = false, features = [
-    "bevy_render",
-    "bevy_core_pipeline",
-    "bevy_log",
-    "bevy_image",
-    "bevy_mesh",
-    "bevy_winit",
-    "bevy_window",
-    "multi_threaded",
-    "reflect_auto_register",
-    "sysinfo_plugin",
-    "debug",
-] }
+# bevy = { version = "0.17.0-rc", default-features = false, features = [
+#     "bevy_render",
+#     "bevy_core_pipeline",
+#     "bevy_image",
+#     "bevy_log",
+#     "bevy_mesh",
+# ] }
+bevy = { version = "0.17.0-rc", default-features = true }
+
 wgpu = "26"
 
 glam_wide = { git = "https://github.com/Jondolf/glam_wide" }
 
 [dev-dependencies]
-# bevy = { version = "0.17.0-rc.1", default-features = false, features = [
-#     "bevy_render",
+# bevy = { version = "0.17.0-rc", default-features = false, features = [
+#     "sysinfo_plugin",
+#     "bevy_winit",
+#     "bevy_window",
+#     "multi_threaded",
+#     "reflect_auto_register",
+#     "debug",
+#     "experimental_bevy_feathers",
+#     "bevy_ui",
+#     "bevy_ui_render",
+#     "bevy_picking",
 # ] }
+bevy = { version = "0.17.0-rc", default-features = true, features = [
+    "experimental_bevy_feathers",
+] }
 fastrand = "2.3.0"

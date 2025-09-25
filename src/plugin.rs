@@ -13,6 +13,7 @@ use bevy::{
         texture::GpuImage,
         view::{ViewTarget, prepare_view_targets},
     },
+    ui_render::graph::NodeUi,
     window::WindowResized,
 };
 use wgpu::{Extent3d, TextureFormat, util::TextureBlitter};
@@ -39,7 +40,7 @@ impl Plugin for GlaciersPlugin {
                 (
                     Node3d::EndMainPassPostProcessing,
                     GlaciersLabel,
-                    Node3d::Upscaling,
+                    NodeUi::UiPass,
                 ),
             )
             .add_systems(Render, prepare_texture_blitter.after(prepare_view_targets));

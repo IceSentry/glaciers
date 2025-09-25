@@ -389,7 +389,7 @@ impl Vertex {
     }
 }
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Clone, Copy)]
 pub struct Triangle {
     pub vertices: [Vertex; 3],
     pub aabb: (Vec3, Vec3),
@@ -402,5 +402,25 @@ impl Triangle {
             |(prev_min, prev_max), point| (point.pos.min(prev_min), point.pos.max(prev_max)),
         );
         Self { vertices, aabb }
+    }
+
+    pub fn recompute_aabb(&mut self) {
+        let aabb = self.vertices.iter().fold(
+            (self.vertices[0].pos, self.vertices[0].pos),
+            |(prev_min, prev_max), point| (point.pos.min(prev_min), point.pos.max(prev_max)),
+        );
+        self.aabb = aabb;
+    }
+
+    pub fn is_visible(&self) -> bool {
+        fn edge_function(a: Vec2, b: Vec2, c: Vec2) -> f32 {
+            (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+        }
+        let a = self.vertices[0].pos.xy();
+        let b = self.vertices[1].pos.xy();
+        let c = self.vertices[2].pos.xy();
+
+        let abc = edge_function(a, b, c);
+        abc < 0.0
     }
 }
