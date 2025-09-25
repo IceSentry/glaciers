@@ -2,11 +2,12 @@ use bevy::{
     core_pipeline::tonemapping::Tonemapping,
     feathers::{
         FeathersPlugins,
-        controls::{SliderProps, slider},
+        controls::{CheckboxProps, SliderProps, checkbox, slider},
         dark_theme::create_dark_theme,
-        theme::{ThemeBackgroundColor, UiTheme},
+        theme::{ThemeBackgroundColor, ThemedText, UiTheme},
     },
     prelude::*,
+    ui::Checked,
     ui_widgets::{Callback, SliderPrecision, SliderStep, SliderValue, ValueChange},
     window::PrimaryWindow,
 };
@@ -30,6 +31,11 @@ fn main() {
     App::new()
         .add_plugins((DefaultPlugins, FeathersPlugins, GlaciersPlugin))
         .insert_resource(UiTheme(create_dark_theme()))
+        .insert_resource(GlobalConfigs {
+            use_wide: true,
+            use_box: true,
+            _show_box_outline: true,
+        })
         .add_systems(Startup, setup)
         .add_systems(Update, (exit_on_esc, draw))
         .run();
@@ -94,6 +100,14 @@ fn setup(
     );
 }
 
+#[derive(Resource)]
+struct GlobalConfigs {
+    use_wide: bool,
+    use_box: bool,
+    // TODO
+    _show_box_outline: bool,
+}
+
 fn spawn_ui_root(commands: &mut Commands, max_width: f32, max_height: f32, triangle: &Triangle) {
     let root = (
         ThemeBackgroundColor(bevy::feathers::tokens::WINDOW_BG),
@@ -109,6 +123,43 @@ fn spawn_ui_root(commands: &mut Commands, max_width: f32, max_height: f32, trian
             ..Default::default()
         },
         children![
+            checkbox(
+                CheckboxProps {
+                    on_change: Callback::System(commands.register_system(
+                        |change: In<ValueChange<bool>>,
+                         mut commands: Commands,
+                         mut configs: ResMut<GlobalConfigs>| {
+                            configs.use_wide = change.value;
+                            if change.value {
+                                commands.entity(change.source).insert(Checked);
+                            } else {
+                                commands.entity(change.source).remove::<Checked>();
+                            }
+                        }
+                    )),
+                },
+                Checked,
+                Spawn((Text::new("Use wide"), ThemedText))
+            ),
+            checkbox(
+                CheckboxProps {
+                    on_change: Callback::System(commands.register_system(
+                        |change: In<ValueChange<bool>>,
+                         mut commands: Commands,
+                         mut configs: ResMut<GlobalConfigs>| {
+                            configs.use_box = change.value;
+                            if change.value {
+                                commands.entity(change.source).insert(Checked);
+                            } else {
+                                commands.entity(change.source).remove::<Checked>();
+                            }
+                        }
+                    )),
+                },
+                (),
+                Spawn((Text::new("Use box"), ThemedText))
+            ),
+            // TODO add divider
             point_slider(commands, 0, &max_width, &max_height, &triangle.vertices),
             point_slider(commands, 1, &max_width, &max_height, &triangle.vertices),
             point_slider(commands, 2, &max_width, &max_height, &triangle.vertices)
@@ -221,12 +272,16 @@ fn exit_on_esc(keyboard: Res<ButtonInput<KeyCode>>) {
     }
 }
 
-fn draw(mut glaciers_params: GlaciersParams, triangle: Single<&Triangle>) -> Result<()> {
+fn draw(
+    mut glaciers_params: GlaciersParams,
+    triangle: Single<&Triangle>,
+    configs: Res<GlobalConfigs>,
+) -> Result<()> {
     let mut canvas = glaciers_params.canvas();
     canvas.clear();
 
-    if USE_WIDE {
-        if USE_BOX {
+    if configs.use_wide {
+        if configs.use_box {
             canvas.draw_triangle_wide_box(&triangle);
         } else {
             canvas.draw_triangle_wide(&triangle);
