@@ -17,6 +17,8 @@ pub const BLUE: Srgba = Srgba::rgb(0.0, 0.0, 1.0);
 pub const USE_WIDE: bool = true;
 pub const USE_BOX: bool = true;
 
+pub const TRIANGLE_COUNT: usize = 10;
+
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins, GlaciersPlugin))
@@ -30,7 +32,7 @@ fn setup(
     mut glaciers_params: GlaciersParams,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
-    let scale = 1.0;
+    let scale = 0.5;
     let res = window.single().unwrap().resolution.clone();
     let glaciers_context = glaciers_params.init_context(res, scale);
     let image_size = glaciers_context.image_size;
@@ -47,14 +49,11 @@ fn setup(
         glaciers_context,
     ));
     fastrand::seed(42);
-    let seed = fastrand::u64(..);
-    for i in 0..1000 {
-        fastrand::seed(i + seed);
-
+    let mut count = 0;
+    loop {
         let random_color = Color::srgba(fastrand::f32(), fastrand::f32(), fastrand::f32(), 1.0);
-        // let random_color = Color::WHITE;
 
-        let max_size = image_size.x / 6;
+        let max_size = image_size.x / 5;
         let random_translation = Vec3::new(
             fastrand::u32(0..image_size.x - max_size) as f32,
             fastrand::u32(0..image_size.y - max_size) as f32,
@@ -81,7 +80,14 @@ fn setup(
             Vertex::new(pos_b, random_color),
             Vertex::new(pos_c, random_color),
         ]);
-        commands.spawn(tri);
+        if tri.is_visible() {
+            println!("spawned {:?}", tri.vertices);
+            commands.spawn(tri);
+            count += 1;
+            if count == TRIANGLE_COUNT {
+                break;
+            }
+        }
     }
 }
 
