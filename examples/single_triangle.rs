@@ -156,7 +156,7 @@ fn spawn_ui_root(commands: &mut Commands, max_width: f32, max_height: f32, trian
                         }
                     )),
                 },
-                (),
+                Checked,
                 Spawn((Text::new("Use box"), ThemedText))
             ),
             // TODO add divider

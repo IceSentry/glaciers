@@ -17,7 +17,7 @@ pub const BLUE: Srgba = Srgba::rgb(0.0, 0.0, 1.0);
 pub const USE_WIDE: bool = true;
 pub const USE_BOX: bool = true;
 
-pub const TRIANGLE_COUNT: usize = 10;
+pub const TRIANGLE_COUNT: usize = 1000;
 
 fn main() {
     App::new()
@@ -32,7 +32,7 @@ fn setup(
     mut glaciers_params: GlaciersParams,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
-    let scale = 0.5;
+    let scale = 1.0;
     let res = window.single().unwrap().resolution.clone();
     let glaciers_context = glaciers_params.init_context(res, scale);
     let image_size = glaciers_context.image_size;

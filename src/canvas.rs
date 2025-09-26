@@ -356,26 +356,30 @@ impl<'a> GlaciersCanvas<'a> {
             }
             has_drawn
         };
+
+        // TODO start at highest point on triangle
         let mut y = min.y as i32;
         let mut min_x = min.x as i32;
         let mut max_x = max.x as i32;
         let mut first_drawn = false;
         for x in (min_x..=max_x).step_by(BLOCK_SIZE as usize) {
             if draw_block(x, y) {
-                min_x = x.min(min_x);
-                max_x = x.max(max_x);
                 if !first_drawn {
+                    min_x = x;
                     first_drawn = true;
                 }
             } else {
-                // if first_drawn {
-                //     break;
-                // }
+                if first_drawn {
+                    max_x = x;
+                    break;
+                }
             }
         }
         let mut x = min_x + ((max_x - min_x) / 2);
         y += BLOCK_SIZE;
         loop {
+            min_x = min.x as i32;
+            max_x = max.x as i32;
             // WARN this isn't inclusive :(
             // So I have to handroll it
             // for x in (min_x..x).rev().step_by(BLOCK_SIZE as usize) {
@@ -383,23 +387,18 @@ impl<'a> GlaciersCanvas<'a> {
             loop {
                 x_loop -= BLOCK_SIZE;
                 if draw_block(x_loop, y) {
-                    min_x = x.min(min_x);
-                    max_x = x.max(max_x);
+                    min_x = x_loop.max(min_x);
                 } else {
                     break;
                 }
-                if x_loop < min_x {
+                if x_loop < min.x as i32 {
                     break;
                 }
             }
-            if draw_block(x, y) {
-                min_x = x.min(min_x);
-                max_x = x.max(max_x);
-            }
-            for x in (x + BLOCK_SIZE..=max_x).step_by(BLOCK_SIZE as usize) {
+            draw_block(x, y);
+            for x in (x_loop + BLOCK_SIZE..=max.x as i32).step_by(BLOCK_SIZE as usize) {
                 if draw_block(x, y) {
-                    min_x = x.min(min_x);
-                    max_x = x.max(max_x);
+                    max_x = x.min(max_x);
                 } else {
                     break;
                 }
