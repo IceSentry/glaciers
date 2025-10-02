@@ -1,4 +1,4 @@
-use bevy::{image::TextureFormatPixelInfo, prelude::*};
+use bevy::{color::palettes::css::MAGENTA, image::TextureFormatPixelInfo, prelude::*};
 use glam_wide::{CmpLe, Vec2x8, Vec3x8, boolf32x8, f32x8};
 
 pub struct GlaciersCanvas<'a> {
@@ -291,7 +291,7 @@ impl<'a> GlaciersCanvas<'a> {
         let color_b = Vec3x8::splat(vertices[1].color);
         let color_c = Vec3x8::splat(vertices[2].color);
 
-        let mut draw_block = |x, y| {
+        let draw_block = |canvas: &mut Self, x, y| {
             let mut has_drawn = false;
             let c00 = IVec2::new(x, y);
             let c01 = IVec2::new(x, y + BLOCK_SIZE - 1);
@@ -341,7 +341,7 @@ impl<'a> GlaciersCanvas<'a> {
                 for i in 0..SIMD_SIZE {
                     if check[i] {
                         has_drawn = true;
-                        self.draw_point(
+                        canvas.draw_point(
                             ps[i].as_uvec2(),
                             [color[i].x, color[i].y, color[i].z, 1.0]
                                 .map(|v| (v * u8::MAX as f32) as u8),
@@ -350,63 +350,62 @@ impl<'a> GlaciersCanvas<'a> {
                 }
             }
             if has_drawn {
-                _draw_corners(self, [0, 0xff, 0, 0xff]);
+                _draw_corners(canvas, [0, 0xff, 0, 0xff]);
             } else {
-                _draw_corners(self, [0xff, 0, 0, 0xff]);
+                _draw_corners(canvas, [0xff, 0, 0, 0xff]);
             }
             has_drawn
         };
+        let mut start_x = 0.0;
+        for v in triangle.vertices {
+            if v.pos.y == min.y {
+                start_x = v.pos.x;
+                break;
+            }
+        }
 
         // TODO start at highest point on triangle
         let mut y = min.y as i32;
-        let mut min_x = min.x as i32;
-        let mut max_x = max.x as i32;
-        let mut first_drawn = false;
-        for x in (min_x..=max_x).step_by(BLOCK_SIZE as usize) {
-            if draw_block(x, y) {
-                if !first_drawn {
-                    min_x = x;
-                    first_drawn = true;
-                }
-            } else {
-                if first_drawn {
-                    max_x = x;
-                    break;
-                }
-            }
-        }
-        let mut x = min_x + ((max_x - min_x) / 2);
-        y += BLOCK_SIZE;
+        let mut min_x;
+        let mut max_x;
+        let mut x = start_x as i32;
         loop {
             min_x = min.x as i32;
             max_x = max.x as i32;
-            // WARN this isn't inclusive :(
-            // So I have to handroll it
+            // WARN this isn't inclusive so I have to handroll it :(
             // for x in (min_x..x).rev().step_by(BLOCK_SIZE as usize) {
             let mut x_loop = x;
             loop {
                 x_loop -= BLOCK_SIZE;
-                if draw_block(x_loop, y) {
-                    min_x = x_loop.max(min_x);
+                if draw_block(self, x_loop, y) {
                 } else {
+                    min_x = x_loop + BLOCK_SIZE;
                     break;
                 }
                 if x_loop < min.x as i32 {
                     break;
                 }
             }
-            draw_block(x, y);
-            for x in (x_loop + BLOCK_SIZE..=max.x as i32).step_by(BLOCK_SIZE as usize) {
-                if draw_block(x, y) {
-                    max_x = x.min(max_x);
+            draw_block(self, x, y);
+            for x in (x..=max.x as i32 + BLOCK_SIZE).step_by(BLOCK_SIZE as usize) {
+                if draw_block(self, x, y) {
                 } else {
+                    max_x = x;
                     break;
                 }
             }
 
+            let min_start = Vec3::new(min_x as f32, y as f32, 0.0);
+            let max_start = Vec3::new(max_x as f32, y as f32, 0.0);
+
+            let end_offset = Vec3::new(0.0, BLOCK_SIZE as f32, 0.0);
+            self.draw_line(min_start, min_start + end_offset, [0xff, 0xff, 0, 0]);
+            self.draw_line(max_start, max_start + end_offset, [0xff, 0, 0xff, 0]);
+
             if y > max.y as i32 {
                 break;
             }
+
             y += BLOCK_SIZE;
             x = min_x + ((max_x - min_x) / 2);
         }
