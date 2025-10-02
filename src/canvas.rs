@@ -349,11 +349,11 @@ impl<'a> GlaciersCanvas<'a> {
                     }
                 }
             }
-            if has_drawn {
-                _draw_corners(canvas, [0, 0xff, 0, 0xff]);
-            } else {
-                _draw_corners(canvas, [0xff, 0, 0, 0xff]);
-            }
+            // if has_drawn {
+            //     _draw_corners(canvas, [0, 0xff, 0, 0xff]);
+            // } else {
+            //     _draw_corners(canvas, [0xff, 0, 0, 0xff]);
+            // }
             has_drawn
         };
         let mut start_x = 0.0;
@@ -395,12 +395,12 @@ impl<'a> GlaciersCanvas<'a> {
                 }
             }
 
-            let min_start = Vec3::new(min_x as f32, y as f32, 0.0);
-            let max_start = Vec3::new(max_x as f32, y as f32, 0.0);
-
-            let end_offset = Vec3::new(0.0, BLOCK_SIZE as f32, 0.0);
-            self.draw_line(min_start, min_start + end_offset, [0xff, 0xff, 0, 0]);
-            self.draw_line(max_start, max_start + end_offset, [0xff, 0, 0xff, 0]);
+            // let min_start = Vec3::new(min_x as f32, y as f32, 0.0);
+            // let max_start = Vec3::new(max_x as f32, y as f32, 0.0);
+            //
+            // let end_offset = Vec3::new(0.0, BLOCK_SIZE as f32, 0.0);
+            // self.draw_line(min_start, min_start + end_offset, [0xff, 0xff, 0, 0]);
+            // self.draw_line(max_start, max_start + end_offset, [0xff, 0, 0xff, 0]);
 
             if y > max.y as i32 {
                 break;
