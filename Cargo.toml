@@ -3,34 +3,34 @@ name = "glaciers"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+bevy_ui_render = ["bevy/bevy_ui_render"]
+
 [dependencies]
-# bevy = { version = "0.17.0-rc", default-features = false, features = [
-#     "bevy_render",
-#     "bevy_core_pipeline",
-#     "bevy_image",
-#     "bevy_log",
-#     "bevy_mesh",
-# ] }
-bevy = { version = "0.17.0-rc", default-features = true }
-
+bevy = { version = "0.17.1", default-features = false, features = [
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_image",
+    "bevy_log",
+    "bevy_mesh",
+    "bevy_ui_render",
+] }
 wgpu = "26"
-
 glam_wide = { git = "https://github.com/Jondolf/glam_wide" }
 
 [dev-dependencies]
-# bevy = { version = "0.17.0-rc", default-features = false, features = [
-#     "sysinfo_plugin",
-#     "bevy_winit",
-#     "bevy_window",
-#     "multi_threaded",
-#     "reflect_auto_register",
-#     "debug",
-#     "experimental_bevy_feathers",
-#     "bevy_ui",
-#     "bevy_ui_render",
-#     "bevy_picking",
-# ] }
-bevy = { version = "0.17.0-rc", default-features = true, features = [
+bevy = { version = "0.17.1", default-features = false, features = [
+    "sysinfo_plugin",
+    "bevy_winit",
+    "bevy_window",
+    "multi_threaded",
+    "reflect_auto_register",
+    "debug",
+    "bevy_picking",
     "experimental_bevy_feathers",
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_text",
+    "default_font",
 ] }
 fastrand = "2.3.0"

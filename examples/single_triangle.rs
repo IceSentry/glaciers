@@ -2,13 +2,13 @@ use bevy::{
     core_pipeline::tonemapping::Tonemapping,
     feathers::{
         FeathersPlugins,
-        controls::{CheckboxProps, SliderProps, checkbox, slider},
+        controls::{SliderProps, checkbox, slider},
         dark_theme::create_dark_theme,
         theme::{ThemeBackgroundColor, ThemedText, UiTheme},
     },
     prelude::*,
     ui::Checked,
-    ui_widgets::{Callback, SliderPrecision, SliderStep, SliderValue, ValueChange},
+    ui_widgets::{SliderPrecision, SliderStep, SliderValue, ValueChange, observe},
     window::PrimaryWindow,
 };
 use glaciers::{
@@ -123,82 +123,53 @@ fn spawn_ui_root(commands: &mut Commands, max_width: f32, max_height: f32, trian
             ..Default::default()
         },
         children![
-            checkbox(
-                CheckboxProps {
-                    on_change: Callback::System(commands.register_system(
-                        |change: In<ValueChange<bool>>,
-                         mut commands: Commands,
-                         mut configs: ResMut<GlobalConfigs>| {
-                            configs.use_wide = change.value;
-                            if change.value {
-                                commands.entity(change.source).insert(Checked);
-                            } else {
-                                commands.entity(change.source).remove::<Checked>();
-                            }
+            (
+                checkbox(Checked, Spawn((Text::new("Use wide"), ThemedText))),
+                observe(
+                    |change: On<ValueChange<bool>>,
+                     mut commands: Commands,
+                     mut configs: ResMut<GlobalConfigs>| {
+                        configs.use_wide = change.value;
+                        let mut checkbox = commands.entity(change.source);
+                        if change.value {
+                            checkbox.insert(Checked);
+                        } else {
+                            checkbox.remove::<Checked>();
                         }
-                    )),
-                },
-                Checked,
-                Spawn((Text::new("Use wide"), ThemedText))
+                    }
+                )
             ),
-            checkbox(
-                CheckboxProps {
-                    on_change: Callback::System(commands.register_system(
-                        |change: In<ValueChange<bool>>,
-                         mut commands: Commands,
-                         mut configs: ResMut<GlobalConfigs>| {
-                            configs.use_box = change.value;
-                            if change.value {
-                                commands.entity(change.source).insert(Checked);
-                            } else {
-                                commands.entity(change.source).remove::<Checked>();
-                            }
+            (
+                checkbox(Checked, Spawn((Text::new("Use box"), ThemedText))),
+                observe(
+                    |change: On<ValueChange<bool>>,
+                     mut commands: Commands,
+                     mut configs: ResMut<GlobalConfigs>| {
+                        configs.use_box = change.value;
+                        let mut checkbox = commands.entity(change.source);
+                        if change.value {
+                            checkbox.insert(Checked);
+                        } else {
+                            checkbox.remove::<Checked>();
                         }
-                    )),
-                },
-                Checked,
-                Spawn((Text::new("Use box"), ThemedText))
+                    }
+                )
             ),
             // TODO add divider
-            point_slider(commands, 0, &max_width, &max_height, &triangle.vertices),
-            point_slider(commands, 1, &max_width, &max_height, &triangle.vertices),
-            point_slider(commands, 2, &max_width, &max_height, &triangle.vertices)
+            point_slider(0, &max_width, &max_height, &triangle.vertices),
+            point_slider(1, &max_width, &max_height, &triangle.vertices),
+            point_slider(2, &max_width, &max_height, &triangle.vertices)
         ],
     );
     commands.spawn(root);
 }
 
 fn point_slider(
-    commands: &mut Commands,
     p: usize,
     max_width: &f32,
     max_height: &f32,
     triangle_vertices: &[Vertex; 3],
 ) -> impl Bundle {
-    let handle_x_change = commands.register_system(
-        move |change: In<ValueChange<f32>>,
-              mut commands: Commands,
-              mut triangle: Single<&mut Triangle>| {
-            commands
-                .entity(change.source)
-                .insert(SliderValue(change.value));
-            // TODO store vertex_id in slider entity and only have one handler
-            triangle.vertices[p].pos.x = change.value;
-            triangle.recompute_aabb();
-        },
-    );
-    let handle_y_change = commands.register_system(
-        move |change: In<ValueChange<f32>>,
-              mut commands: Commands,
-              mut triangle: Single<&mut Triangle>| {
-            commands
-                .entity(change.source)
-                .insert(SliderValue(change.value));
-            triangle.vertices[p].pos.y = change.value;
-            triangle.recompute_aabb();
-        },
-    );
-
     (
         Node {
             display: Display::Flex,
@@ -222,13 +193,33 @@ fn point_slider(
                         "X: ",
                         *max_width,
                         triangle_vertices[p].pos.x,
-                        handle_x_change
+                        observe(
+                            move |change: On<ValueChange<f32>>,
+                                  mut commands: Commands,
+                                  mut triangle: Single<&mut Triangle>| {
+                                commands
+                                    .entity(change.source)
+                                    .insert(SliderValue(change.value));
+                                triangle.vertices[p].pos.x = change.value;
+                                triangle.recompute_aabb();
+                            }
+                        ),
                     ),
                     labelled_slider(
                         "Y: ",
                         *max_height,
                         triangle_vertices[p].pos.y,
-                        handle_y_change
+                        observe(
+                            move |change: On<ValueChange<f32>>,
+                                  mut commands: Commands,
+                                  mut triangle: Single<&mut Triangle>| {
+                                commands
+                                    .entity(change.source)
+                                    .insert(SliderValue(change.value));
+                                triangle.vertices[p].pos.y = change.value;
+                                triangle.recompute_aabb();
+                            }
+                        )
                     ),
                 ],
             ),
@@ -236,12 +227,7 @@ fn point_slider(
     )
 }
 
-fn labelled_slider(
-    label: &str,
-    max: f32,
-    value: f32,
-    on_change: bevy::ecs::system::SystemId<In<ValueChange<f32>>>,
-) -> impl Bundle {
+fn labelled_slider(label: &str, max: f32, value: f32, b: impl Bundle) -> impl Bundle {
     (
         Node {
             display: Display::Flex,
@@ -253,15 +239,17 @@ fn labelled_slider(
         },
         children![
             Text(label.into()),
-            slider(
-                SliderProps {
-                    max,
-                    value,
-                    on_change: Callback::System(on_change),
-                    ..Default::default()
-                },
-                (SliderStep(1.), SliderPrecision(1)),
-            ),
+            (
+                slider(
+                    SliderProps {
+                        max,
+                        value,
+                        ..Default::default()
+                    },
+                    (SliderStep(1.), SliderPrecision(1)),
+                ),
+                b
+            )
         ],
     )
 }
