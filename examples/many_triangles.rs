@@ -81,7 +81,6 @@ fn setup(
             Vertex::new(pos_c, random_color),
         ]);
         if tri.is_visible() {
-            println!("spawned {:?}", tri.vertices);
             commands.spawn(tri);
             count += 1;
             if count == TRIANGLE_COUNT {
@@ -122,15 +121,19 @@ fn draw(
 
     canvas.clear();
 
-    for triangle in &triangles {
-        if USE_WIDE {
-            if USE_BOX {
-                canvas.draw_triangle_wide_box(triangle);
+    {
+        let _draw_triangle_span = info_span!("draw_triangle").entered();
+
+        for triangle in &triangles {
+            if USE_WIDE {
+                if USE_BOX {
+                    canvas.draw_triangle_wide_box(triangle);
+                } else {
+                    canvas.draw_triangle_wide(triangle);
+                }
             } else {
-                canvas.draw_triangle_wide(triangle);
+                canvas.draw_triangle(triangle);
             }
-        } else {
-            canvas.draw_triangle(triangle);
         }
     }
 
@@ -139,6 +142,8 @@ fn draw(
     if let Some(timer) = timer.as_ref()
         && timer.just_finished()
     {
+        let _update_title_span = info_span!("update_window_title").entered();
+
         window.single_mut().unwrap().title = format!(
             "Glaciers - {}x{} {:.2}ms {:.0}fps - {} triangles",
             canvas.size().x,

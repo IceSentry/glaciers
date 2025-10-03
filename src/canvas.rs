@@ -17,6 +17,7 @@ impl<'a> GlaciersCanvas<'a> {
     }
 
     pub fn clear(&mut self) {
+        let _canvas_clear_span = info_span!("canvas_clear").entered();
         if let Some(data) = self.color.data.as_mut() {
             for old_pixel in
                 data.chunks_mut(self.color.texture_descriptor.format.pixel_size().unwrap())
