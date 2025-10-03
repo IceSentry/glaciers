@@ -24,9 +24,6 @@ pub const RED: Srgba = Srgba::rgb(1.0, 0.0, 0.0);
 pub const GREEN: Srgba = Srgba::rgb(0.0, 1.0, 0.0);
 pub const BLUE: Srgba = Srgba::rgb(0.0, 0.0, 1.0);
 
-pub const USE_WIDE: bool = true;
-pub const USE_BOX: bool = true;
-
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins, FeathersPlugins, GlaciersPlugin))
@@ -34,7 +31,7 @@ fn main() {
         .insert_resource(GlobalConfigs {
             use_wide: true,
             use_box: true,
-            _show_box_outline: true,
+            show_box_outline: true,
         })
         .add_systems(Startup, setup)
         .add_systems(Update, (exit_on_esc, draw))
@@ -104,8 +101,7 @@ fn setup(
 struct GlobalConfigs {
     use_wide: bool,
     use_box: bool,
-    // TODO
-    _show_box_outline: bool,
+    show_box_outline: bool,
 }
 
 fn spawn_ui_root(commands: &mut Commands, max_width: f32, max_height: f32, triangle: &Triangle) {
@@ -146,6 +142,22 @@ fn spawn_ui_root(commands: &mut Commands, max_width: f32, max_height: f32, trian
                      mut commands: Commands,
                      mut configs: ResMut<GlobalConfigs>| {
                         configs.use_box = change.value;
+                        let mut checkbox = commands.entity(change.source);
+                        if change.value {
+                            checkbox.insert(Checked);
+                        } else {
+                            checkbox.remove::<Checked>();
+                        }
+                    }
+                )
+            ),
+            (
+                checkbox(Checked, Spawn((Text::new("Show outline"), ThemedText))),
+                observe(
+                    |change: On<ValueChange<bool>>,
+                     mut commands: Commands,
+                     mut configs: ResMut<GlobalConfigs>| {
+                        configs.show_box_outline = change.value;
                         let mut checkbox = commands.entity(change.source);
                         if change.value {
                             checkbox.insert(Checked);
@@ -270,12 +282,16 @@ fn draw(
 
     if configs.use_wide {
         if configs.use_box {
-            canvas.draw_triangle_wide_box(&triangle);
+            canvas.draw_triangle_wide_box(&triangle, configs.show_box_outline);
         } else {
             canvas.draw_triangle_wide(&triangle);
         }
     } else {
-        canvas.draw_triangle(&triangle);
+        if configs.use_box {
+            canvas.draw_triangle_box(&triangle, configs.show_box_outline);
+        } else {
+            canvas.draw_triangle(&triangle);
+        }
     }
 
     Ok(())

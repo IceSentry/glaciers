@@ -90,6 +90,10 @@ impl<'a> GlaciersCanvas<'a> {
             (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
         }
 
+        if !triangle.is_visible() {
+            return;
+        }
+
         let Triangle {
             vertices,
             aabb: (min, max),
@@ -98,9 +102,47 @@ impl<'a> GlaciersCanvas<'a> {
         let b = vertices[1].pos.xy().as_ivec2();
         let c = vertices[2].pos.xy().as_ivec2();
         let abc = edge_function(a, b, c);
-        if abc == 0 {
+
+        for y in min.y as i32..=max.y as i32 {
+            for x in min.x as i32..=max.x as i32 {
+                let p = IVec2::new(x, y);
+
+                let abp = edge_function(a, b, p);
+                let bcp = edge_function(b, c, p);
+                let cap = edge_function(c, a, p);
+
+                if abp <= 0 && bcp <= 0 && cap <= 0 {
+                    let weights = IVec3::new(bcp, cap, abp).as_vec3a() / abc as f32;
+                    let color =
+                        Mat3::from_cols(vertices[0].color, vertices[1].color, vertices[2].color)
+                            * weights;
+                    let color =
+                        [color.x, color.y, color.z, 1.0].map(|v| (v * u8::MAX as f32) as u8);
+
+                    self.draw_point(p.as_uvec2(), color);
+                }
+            }
+        }
+    }
+
+    pub fn draw_triangle_box(&mut self, triangle: &Triangle, show_outline: bool) {
+        // returns double the signed area of the triangle
+        fn edge_function(a: IVec2, b: IVec2, c: IVec2) -> i32 {
+            (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+        }
+
+        if !triangle.is_visible() {
             return;
-        };
+        }
+
+        let Triangle {
+            vertices,
+            aabb: (min, max),
+        } = triangle;
+        let a = vertices[0].pos.xy().as_ivec2();
+        let b = vertices[1].pos.xy().as_ivec2();
+        let c = vertices[2].pos.xy().as_ivec2();
+        let abc = edge_function(a, b, c);
 
         // I need to use a macro because the inline annotation is not aggressive enough
         macro_rules! draw_point {
@@ -110,20 +152,14 @@ impl<'a> GlaciersCanvas<'a> {
                 let abp = edge_function(a, b, p);
                 let bcp = edge_function(b, c, p);
                 let cap = edge_function(c, a, p);
-                if $y == 0 && $x < 4 {
-                    println!("cap: {:?}", cap);
-                }
 
-                // Normally you only need to check one of these, but I don't know the winding order of
-                // the triangle
                 if abp <= 0 && bcp <= 0 && cap <= 0 {
                     let weights = IVec3::new(bcp, cap, abp).as_vec3a() / abc as f32;
-                    let color = Mat3::from_cols(
-                        vertices[0].color,
-                        vertices[1].color,
-                        vertices[2].color
-                    ) * weights;
-                    let color = [color.x, color.y, color.z, 1.0].map(|v| (v * u8::MAX as f32) as u8);
+                    let color =
+                        Mat3::from_cols(vertices[0].color, vertices[1].color, vertices[2].color)
+                            * weights;
+                    let color =
+                        [color.x, color.y, color.z, 1.0].map(|v| (v * u8::MAX as f32) as u8);
 
                     self.draw_point(p.as_uvec2(), color);
                 }
@@ -132,6 +168,7 @@ impl<'a> GlaciersCanvas<'a> {
 
         // println!("--- start ---");
 
+        // TODO use the same algorithm as the wide_box
         // This should probably be relative to resolution scale
         let block_size: i32 = 8;
         let orient = (max.x - min.x) / (max.y - min.y);
@@ -144,7 +181,7 @@ impl<'a> GlaciersCanvas<'a> {
                     let c10 = IVec2::new(x + block_size - 1, y);
                     let c11 = IVec2::new(x + block_size - 1, y + block_size - 1);
 
-                    let _draw_corners = |canvas: &mut Self, color| {
+                    let draw_corners = |canvas: &mut Self, color| {
                         canvas.draw_line(c00.extend(0).as_vec3(), c01.extend(0).as_vec3(), color);
                         canvas.draw_line(c01.extend(0).as_vec3(), c11.extend(0).as_vec3(), color);
                         canvas.draw_line(c11.extend(0).as_vec3(), c10.extend(0).as_vec3(), color);
@@ -164,10 +201,14 @@ impl<'a> GlaciersCanvas<'a> {
                                 draw_point!(x, y);
                             }
                         }
-                        // draw_corners(self, [0, 0xff, 0, 0xff]);
+                        if show_outline {
+                            draw_corners(self, [0, 0xff, 0, 0xff]);
+                        }
                         pass = true;
                     } else {
-                        // draw_corners(self, [0xff, 0, 0, 0xff]);
+                        if show_outline {
+                            draw_corners(self, [0xff, 0, 0, 0xff]);
+                        }
                         if pass {
                             break;
                         }
@@ -175,6 +216,29 @@ impl<'a> GlaciersCanvas<'a> {
                 }
             }
         } else {
+            if show_outline {
+                self.draw_line(
+                    Vec3::new(min.x, min.y, 0.0),
+                    Vec3::new(min.x, max.y, 0.0),
+                    [0, 0xff, 0, 0xff],
+                );
+                self.draw_line(
+                    Vec3::new(min.x, max.y, 0.0),
+                    Vec3::new(max.x, max.y, 0.0),
+                    [0, 0xff, 0, 0xff],
+                );
+                self.draw_line(
+                    Vec3::new(max.x, max.y, 0.0),
+                    Vec3::new(max.x, min.y, 0.0),
+                    [0, 0xff, 0, 0xff],
+                );
+                self.draw_line(
+                    Vec3::new(max.x, min.y, 0.0),
+                    Vec3::new(min.x, min.y, 0.0),
+                    [0, 0xff, 0, 0xff],
+                );
+            }
+
             for y in min.y as i32..=max.y as i32 {
                 for x in min.x as i32..=max.x as i32 {
                     draw_point!(x, y);
@@ -184,13 +248,12 @@ impl<'a> GlaciersCanvas<'a> {
     }
 
     pub fn draw_triangle_wide(&mut self, triangle: &Triangle) {
-        // returns double the signed area of the triangle
-        fn edge_function(a: Vec2, b: Vec2, c: Vec2) -> f32 {
+        fn edge_function_wide(a: Vec2x8, b: Vec2x8, c: Vec2x8) -> f32x8 {
             (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
         }
 
-        fn edge_function_wide(a: Vec2x8, b: Vec2x8, c: Vec2x8) -> f32x8 {
-            (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+        if !triangle.is_visible() {
+            return;
         }
 
         let Triangle {
@@ -200,11 +263,6 @@ impl<'a> GlaciersCanvas<'a> {
         let a = vertices[0].pos.xy();
         let b = vertices[1].pos.xy();
         let c = vertices[2].pos.xy();
-
-        let abc = edge_function(a, b, c);
-        if abc >= 0.0 {
-            return;
-        };
 
         let a = Vec2x8::new_splat(a.x as f32, a.y as f32);
         let b = Vec2x8::new_splat(b.x as f32, b.y as f32);
@@ -263,13 +321,17 @@ impl<'a> GlaciersCanvas<'a> {
         }
     }
 
-    pub fn draw_triangle_wide_box(&mut self, triangle: &Triangle) {
+    pub fn draw_triangle_wide_box(&mut self, triangle: &Triangle, show_outline: bool) {
         const SIMD_SIZE: usize = 8;
         const BLOCK_SIZE: i32 = SIMD_SIZE as i32;
 
         fn edge_function_wide(a: Vec2x8, b: Vec2x8, c: Vec2x8) -> f32x8 {
             (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
         }
+
+        if !triangle.is_visible() {
+            return;
+        };
 
         let Triangle {
             vertices,
@@ -278,10 +340,6 @@ impl<'a> GlaciersCanvas<'a> {
         let a = vertices[0].pos.xy();
         let b = vertices[1].pos.xy();
         let c = vertices[2].pos.xy();
-
-        if !triangle.is_visible() {
-            return;
-        };
 
         let a = Vec2x8::new_splat(a.x as f32, a.y as f32);
         let b = Vec2x8::new_splat(b.x as f32, b.y as f32);
@@ -350,11 +408,13 @@ impl<'a> GlaciersCanvas<'a> {
                     }
                 }
             }
-            // if has_drawn {
-            //     _draw_corners(canvas, [0, 0xff, 0, 0xff]);
-            // } else {
-            //     _draw_corners(canvas, [0xff, 0, 0, 0xff]);
-            // }
+            if show_outline {
+                if has_drawn {
+                    _draw_corners(canvas, [0, 0xff, 0, 0xff]);
+                } else {
+                    _draw_corners(canvas, [0xff, 0, 0, 0xff]);
+                }
+            }
             has_drawn
         };
         let mut start_x = 0.0;

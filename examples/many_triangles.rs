@@ -1,6 +1,18 @@
 use std::time::Instant;
 
-use bevy::{core_pipeline::tonemapping::Tonemapping, prelude::*, window::PrimaryWindow};
+use bevy::{
+    core_pipeline::tonemapping::Tonemapping,
+    feathers::{
+        FeathersPlugins,
+        controls::checkbox,
+        dark_theme::create_dark_theme,
+        theme::{ThemeBackgroundColor, ThemedText, UiTheme},
+    },
+    prelude::*,
+    ui::Checked,
+    ui_widgets::{ValueChange, observe},
+    window::PrimaryWindow,
+};
 use glaciers::{
     GlaciersParams,
     canvas::{Triangle, Vertex},
@@ -21,7 +33,13 @@ pub const TRIANGLE_COUNT: usize = 1000;
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, GlaciersPlugin))
+        .add_plugins((DefaultPlugins, GlaciersPlugin, FeathersPlugins))
+        .insert_resource(UiTheme(create_dark_theme()))
+        .insert_resource(GlobalConfigs {
+            use_wide: true,
+            use_box: true,
+            _show_box_outline: true,
+        })
         .add_systems(Startup, setup)
         .add_systems(Update, (rotate, handle_input, draw))
         .run();
@@ -88,6 +106,67 @@ fn setup(
             }
         }
     }
+    spawn_ui_root(&mut commands);
+}
+
+#[derive(Resource)]
+struct GlobalConfigs {
+    use_wide: bool,
+    use_box: bool,
+    // TODO
+    _show_box_outline: bool,
+}
+
+fn spawn_ui_root(commands: &mut Commands) {
+    let root = (
+        ThemeBackgroundColor(bevy::feathers::tokens::WINDOW_BG),
+        Node {
+            display: Display::Flex,
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Stretch,
+            justify_content: JustifyContent::Start,
+            padding: UiRect::all(px(8)),
+            row_gap: px(8),
+            // width: percent(10),
+            min_width: px(100),
+            ..Default::default()
+        },
+        children![
+            (
+                checkbox(Checked, Spawn((Text::new("Use wide"), ThemedText))),
+                observe(
+                    |change: On<ValueChange<bool>>,
+                     mut commands: Commands,
+                     mut configs: ResMut<GlobalConfigs>| {
+                        configs.use_wide = change.value;
+                        let mut checkbox = commands.entity(change.source);
+                        if change.value {
+                            checkbox.insert(Checked);
+                        } else {
+                            checkbox.remove::<Checked>();
+                        }
+                    }
+                )
+            ),
+            (
+                checkbox(Checked, Spawn((Text::new("Use box"), ThemedText))),
+                observe(
+                    |change: On<ValueChange<bool>>,
+                     mut commands: Commands,
+                     mut configs: ResMut<GlobalConfigs>| {
+                        configs.use_box = change.value;
+                        let mut checkbox = commands.entity(change.source);
+                        if change.value {
+                            checkbox.insert(Checked);
+                        } else {
+                            checkbox.remove::<Checked>();
+                        }
+                    }
+                )
+            ),
+        ],
+    );
+    commands.spawn(root);
 }
 
 fn handle_input(keyboard: Res<ButtonInput<KeyCode>>) {
@@ -101,6 +180,7 @@ fn draw(
     mut glaciers_params: GlaciersParams,
     mut window: Query<&mut Window, With<PrimaryWindow>>,
     triangles: Query<&Triangle>,
+    global_configs: Res<GlobalConfigs>,
     time: Res<Time>,
     mut timer: Local<Option<Timer>>,
 ) -> Result<()> {
@@ -125,14 +205,18 @@ fn draw(
         let _draw_triangle_span = info_span!("draw_triangle").entered();
 
         for triangle in &triangles {
-            if USE_WIDE {
-                if USE_BOX {
-                    canvas.draw_triangle_wide_box(triangle);
+            if global_configs.use_wide {
+                if global_configs.use_box {
+                    canvas.draw_triangle_wide_box(triangle, false);
                 } else {
                     canvas.draw_triangle_wide(triangle);
                 }
             } else {
-                canvas.draw_triangle(triangle);
+                if global_configs.use_box {
+                    canvas.draw_triangle_box(triangle, false);
+                } else {
+                    canvas.draw_triangle(triangle);
+                }
             }
         }
     }
