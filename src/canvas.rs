@@ -357,7 +357,7 @@ impl<'a> GlaciersCanvas<'a> {
             let c10 = IVec2::new(x + BLOCK_SIZE - 1, y);
             let c11 = IVec2::new(x + BLOCK_SIZE - 1, y + BLOCK_SIZE - 1);
 
-            let _draw_corners = |canvas: &mut Self, color| {
+            let draw_corners = |canvas: &mut Self, color| {
                 canvas.draw_line(c00.extend(0).as_vec3(), c01.extend(0).as_vec3(), color);
                 canvas.draw_line(c01.extend(0).as_vec3(), c11.extend(0).as_vec3(), color);
                 canvas.draw_line(c11.extend(0).as_vec3(), c10.extend(0).as_vec3(), color);
@@ -410,47 +410,46 @@ impl<'a> GlaciersCanvas<'a> {
             }
             if show_outline {
                 if has_drawn {
-                    _draw_corners(canvas, [0, 0xff, 0, 0xff]);
+                    draw_corners(canvas, [0, 0xff, 0, 0xff]);
                 } else {
-                    _draw_corners(canvas, [0xff, 0, 0, 0xff]);
+                    draw_corners(canvas, [0xff, 0, 0, 0xff]);
                 }
             }
             has_drawn
         };
-        let mut start_x = 0.0;
+
+        let mut top_start_x = min.x;
+        let mut bottom_start_x = min.x;
         for v in triangle.vertices {
             if v.pos.y == min.y {
-                start_x = v.pos.x;
-                break;
+                top_start_x = v.pos.x;
+            }
+            if v.pos.y == max.y {
+                bottom_start_x = v.pos.x;
             }
         }
 
-        // TODO start at highest point on triangle
         let mut y = min.y as i32;
-        let mut min_x;
-        let mut max_x;
-        let mut x = start_x as i32;
+        let mut x = top_start_x as i32;
+        let half_y = (min.y as i32 + ((max.y as i32 - min.y as i32) >> 1));
         loop {
-            min_x = min.x as i32;
-            max_x = max.x as i32;
+            let mut min_x = min.x as i32;
+            let mut max_x = max.x as i32;
             // WARN this isn't inclusive so I have to handroll it :(
             // for x in (min_x..x).rev().step_by(BLOCK_SIZE as usize) {
-            let mut x_loop = x;
+            let mut x_loop = x - BLOCK_SIZE;
             loop {
-                x_loop -= BLOCK_SIZE;
-                if draw_block(self, x_loop, y) {
-                } else {
+                if !draw_block(self, x_loop, y) {
                     min_x = x_loop + BLOCK_SIZE;
                     break;
                 }
                 if x_loop < min.x as i32 {
                     break;
                 }
+                x_loop -= BLOCK_SIZE;
             }
-            draw_block(self, x, y);
             for x in (x..=max.x as i32 + BLOCK_SIZE).step_by(BLOCK_SIZE as usize) {
-                if draw_block(self, x, y) {
-                } else {
+                if !draw_block(self, x, y) {
                     max_x = x;
                     break;
                 }
@@ -458,17 +457,53 @@ impl<'a> GlaciersCanvas<'a> {
 
             // let min_start = Vec3::new(min_x as f32, y as f32, 0.0);
             // let max_start = Vec3::new(max_x as f32, y as f32, 0.0);
-            //
             // let end_offset = Vec3::new(0.0, BLOCK_SIZE as f32, 0.0);
             // self.draw_line(min_start, min_start + end_offset, [0xff, 0xff, 0, 0]);
             // self.draw_line(max_start, max_start + end_offset, [0xff, 0, 0xff, 0]);
 
-            if y > max.y as i32 {
+            y += BLOCK_SIZE;
+            if y >= half_y {
                 break;
             }
 
-            y += BLOCK_SIZE;
-            x = min_x + ((max_x - min_x) / 2);
+            x = min_x + ((max_x - min_x) >> 1);
+        }
+        let mut x = bottom_start_x as i32;
+        let mut y = max.y as i32;
+        loop {
+            let mut min_x = min.x as i32;
+            let mut max_x = max.x as i32;
+            // WARN this isn't inclusive so I have to handroll it :(
+            // for x in (min_x..x).rev().step_by(BLOCK_SIZE as usize) {
+            let mut x_loop = x - BLOCK_SIZE;
+            loop {
+                if !draw_block(self, x_loop, y) {
+                    min_x = x_loop + BLOCK_SIZE;
+                    break;
+                }
+                if x_loop < min.x as i32 {
+                    break;
+                }
+                x_loop -= BLOCK_SIZE;
+            }
+            for x in (x..=max.x as i32 + BLOCK_SIZE).step_by(BLOCK_SIZE as usize) {
+                if !draw_block(self, x, y) {
+                    max_x = x;
+                    break;
+                }
+            }
+
+            // let min_start = Vec3::new(min_x as f32, y as f32, 0.0);
+            // let max_start = Vec3::new(max_x as f32, y as f32, 0.0);
+            // let end_offset = Vec3::new(0.0, BLOCK_SIZE as f32, 0.0);
+            // self.draw_line(min_start, min_start + end_offset, [0xff, 0xff, 0, 0]);
+            // self.draw_line(max_start, max_start + end_offset, [0xff, 0, 0xff, 0]);
+
+            y -= BLOCK_SIZE;
+            if y < half_y {
+                break;
+            }
+            x = min_x + ((max_x - min_x) >> 1);
         }
     }
 }

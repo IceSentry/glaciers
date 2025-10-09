@@ -9,7 +9,7 @@ use bevy::{
     prelude::*,
     ui::Checked,
     ui_widgets::{SliderPrecision, SliderStep, SliderValue, ValueChange, observe},
-    window::PrimaryWindow,
+    window::{PrimaryWindow, WindowResolution},
 };
 use glaciers::{
     GlaciersParams,
@@ -26,7 +26,17 @@ pub const BLUE: Srgba = Srgba::rgb(0.0, 0.0, 1.0);
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, FeathersPlugins, GlaciersPlugin))
+        .add_plugins((
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    resolution: WindowResolution::new(1920, 1080),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            FeathersPlugins,
+            GlaciersPlugin,
+        ))
         .insert_resource(UiTheme(create_dark_theme()))
         .insert_resource(GlobalConfigs {
             use_wide: true,
@@ -43,7 +53,7 @@ fn setup(
     mut glaciers_params: GlaciersParams,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
-    let scale = 0.5;
+    let scale = 0.25;
     let res = window.single().unwrap().resolution.clone();
     let glaciers_context = glaciers_params.init_context(res, scale);
     let image_size = glaciers_context.image_size;
@@ -114,8 +124,8 @@ fn spawn_ui_root(commands: &mut Commands, max_width: f32, max_height: f32, trian
             justify_content: JustifyContent::Start,
             padding: UiRect::all(px(8)),
             row_gap: px(8),
-            width: percent(25),
-            min_width: px(200),
+            width: percent(15),
+            min_width: px(150),
             ..Default::default()
         },
         children![

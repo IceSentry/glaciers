@@ -184,7 +184,6 @@ fn draw(
     time: Res<Time>,
     mut timer: Local<Option<Timer>>,
 ) -> Result<()> {
-    // let timer = *timer;
     match timer.as_mut() {
         Some(timer) => {
             timer.tick(time.delta());
